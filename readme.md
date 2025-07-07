@@ -33,7 +33,7 @@ Une application web interactive pour visualiser et analyser les corrélations en
 ### 1. Cloner le repository
 
 ```bash
-git clone https://github.com/yourusername/correlation-matrix-app.git
+git clone https://github.com/nohem-mg/Cross-Asset-Correlation-Matrix.git
 cd correlation-matrix-app
 ```
 
@@ -72,7 +72,7 @@ COINGECKO_API_KEY=  # Optionnel, pour des limites plus élevées
 
 ```bash
 cd backend
-python app.py
+python3 app.py
 ```
 
 Le serveur démarrera sur `http://localhost:5000`
@@ -84,7 +84,7 @@ Ouvrez le fichier `frontend/index.html` dans votre navigateur, ou utilisez un se
 ```bash
 # Avec Python
 cd frontend
-python -m http.server 8080
+python3 -m http.server 8080
 
 # Ou avec Node.js
 npx serve frontend -p 8080
@@ -169,23 +169,6 @@ TIME_PERIODS = {
 }
 ```
 
-## 🐛 Dépannage
-
-### Erreur CORS
-
-Assurez-vous que l'URL du frontend est dans `CORS_ORIGINS` dans `.env`
-
-### Données manquantes
-
-- Vérifiez votre connexion internet
-- Certains actifs peuvent ne pas avoir de données pour certaines périodes
-- Les API peuvent avoir des limites de taux
-
-### Performance
-
-- Pour de meilleures performances avec beaucoup d'actifs, considérez l'ajout d'une clé API CoinGecko
-- Le cache est activé par défaut (5 minutes)
-
 ## 📈 Améliorations futures
 
 - [ ] Support de plus de sources de données
@@ -196,19 +179,6 @@ Assurez-vous que l'URL du frontend est dans `CORS_ORIGINS` dans `.env`
 - [ ] Export Excel avec graphiques
 - [ ] API publique
 
-## 🤝 Contribution
-
-Les contributions sont les bienvenues ! N'hésitez pas à :
-
-1. Fork le projet
-2. Créer une branche (`git checkout -b feature/AmazingFeature`)
-3. Commit vos changements (`git commit -m 'Add AmazingFeature'`)
-4. Push vers la branche (`git push origin feature/AmazingFeature`)
-5. Ouvrir une Pull Request
-
-## 📝 License
-
-Ce projet est sous licence MIT. Voir le fichier `LICENSE` pour plus de détails.
 
 ## 🙏 Remerciements
 
