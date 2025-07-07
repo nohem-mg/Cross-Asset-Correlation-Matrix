@@ -26,7 +26,15 @@ class DataFetcher:
             return self.cache[cache_key]
         
         # Convert symbols to CoinGecko IDs
-        crypto_ids = [Config.CRYPTO_ASSETS.get(symbol, symbol.lower()) for symbol in symbols]
+        crypto_ids = []
+        for symbol in symbols:
+            if symbol in Config.CRYPTO_ASSETS:
+                # Use predefined mapping
+                crypto_ids.append(Config.CRYPTO_ASSETS[symbol])
+            else:
+                # For custom assets, try to find the CoinGecko ID
+                crypto_id = self._get_coingecko_id_for_symbol(symbol)
+                crypto_ids.append(crypto_id if crypto_id else symbol.lower())
         
         # Calculate date range
         end_date = datetime.now()
@@ -86,6 +94,32 @@ class DataFetcher:
             return result
         
         return pd.DataFrame()
+    
+    def _get_coingecko_id_for_symbol(self, symbol: str) -> Optional[str]:
+        """Get CoinGecko ID for a custom crypto symbol"""
+        try:
+            url = "https://api.coingecko.com/api/v3/search"
+            params = {'query': symbol}
+            
+            if Config.COINGECKO_API_KEY:
+                params['x_cg_pro_api_key'] = Config.COINGECKO_API_KEY
+            
+            response = requests.get(url, params=params)
+            response.raise_for_status()
+            
+            data = response.json()
+            coins = data.get('coins', [])
+            
+            # Find exact symbol match
+            for coin in coins:
+                if coin['symbol'].upper() == symbol.upper():
+                    return coin['id']
+            
+            return None
+            
+        except Exception as e:
+            print(f"Error getting CoinGecko ID for {symbol}: {e}")
+            return None
     
     def fetch_stock_data(self, symbols: List[str], period: str) -> pd.DataFrame:
         """Fetch stock/ETF/commodity data from Yahoo Finance"""
@@ -228,3 +262,388 @@ class DataFetcher:
                     prices[symbol] = float(data.loc[last_valid_idx, symbol])
         
         return prices
+
+    def search_assets(self, query: str) -> List[Dict]:
+        """Search for assets in both Yahoo Finance and CoinGecko"""
+        results = []
+        
+        # Search in Yahoo Finance
+        yahoo_results = self._search_yahoo_finance(query)
+        results.extend(yahoo_results)
+        
+        # Search in CoinGecko
+        coingecko_results = self._search_coingecko(query)
+        results.extend(coingecko_results)
+        
+        # Remove duplicates and limit results
+        seen_symbols = set()
+        unique_results = []
+        for result in results:
+            if result['symbol'] not in seen_symbols:
+                seen_symbols.add(result['symbol'])
+                unique_results.append(result)
+        
+        return unique_results[:20]  # Limit to 20 results
+    
+    def _search_yahoo_finance(self, query: str) -> List[Dict]:
+        """Search for assets in Yahoo Finance using yfinance"""
+        results = []
+        
+        try:
+            # First, try to search in common stock/ETF/commodity mappings
+            name_to_symbol_mappings = self._get_name_to_symbol_mappings()
+            query_lower = query.lower()
+            
+            # Search by name in mappings
+            for name, symbol_info in name_to_symbol_mappings.items():
+                if query_lower in name.lower():
+                    # Try to get data for this symbol to validate it
+                    try:
+                        ticker = yf.Ticker(symbol_info['symbol'])
+                        info = ticker.info
+                        
+                        if info and 'symbol' in info and info.get('regularMarketPrice'):
+                            results.append({
+                                'symbol': symbol_info['symbol'],
+                                'name': name,
+                                'source': 'yahoo',
+                                'category': symbol_info['category'],
+                                'price': info.get('regularMarketPrice'),
+                                'currency': info.get('currency', 'USD')
+                            })
+                    except:
+                        continue
+            
+            # Try searching with the query as a symbol (existing logic)
+            symbols_to_try = [
+                query.upper(),
+                f"{query.upper()}.PA",  # Euronext Paris
+                f"{query.upper()}.L",   # London Stock Exchange
+                f"{query.upper()}.TO",  # Toronto Stock Exchange
+                f"^{query.upper()}",    # Index
+                f"{query.upper()}=F"    # Futures/Commodities
+            ]
+            
+            for symbol in symbols_to_try:
+                try:
+                    ticker = yf.Ticker(symbol)
+                    info = ticker.info
+                    
+                    if info and 'symbol' in info and info.get('regularMarketPrice'):
+                        name = info.get('longName', info.get('shortName', symbol))
+                        if name and name != symbol:
+                            # Check if we already have this symbol
+                            if not any(r['symbol'] == symbol for r in results):
+                                # Determine category based on asset type
+                                category = self._determine_yahoo_category(info)
+                                
+                                results.append({
+                                    'symbol': symbol,
+                                    'name': name,
+                                    'source': 'yahoo',
+                                    'category': category,
+                                    'price': info.get('regularMarketPrice'),
+                                    'currency': info.get('currency', 'USD')
+                                })
+                    
+                    time.sleep(0.1)  # Rate limiting
+                    
+                except Exception as e:
+                    continue  # Skip invalid symbols
+                    
+        except Exception as e:
+            print(f"Error searching Yahoo Finance: {e}")
+        
+        return results
+    
+    def _get_name_to_symbol_mappings(self) -> Dict[str, Dict]:
+        """Get a mapping of company/asset names to their symbols for search"""
+        mappings = {}
+        
+        # Add from config
+        for symbol, name in Config.STOCK_ASSETS.items():
+            mappings[name] = {'symbol': symbol, 'category': 'stocks'}
+        
+        for symbol, name in Config.ETF_ASSETS.items():
+            mappings[name] = {'symbol': symbol, 'category': 'etfs'}
+            
+        for symbol, name in Config.COMMODITY_ASSETS.items():
+            mappings[name] = {'symbol': symbol, 'category': 'commodities'}
+        
+        # Add common additional mappings for popular searches
+        additional_mappings = {
+            # Tech companies
+            'Apple': {'symbol': 'AAPL', 'category': 'stocks'},
+            'Microsoft': {'symbol': 'MSFT', 'category': 'stocks'},
+            'Google': {'symbol': 'GOOGL', 'category': 'stocks'},
+            'Alphabet': {'symbol': 'GOOGL', 'category': 'stocks'},
+            'Tesla': {'symbol': 'TSLA', 'category': 'stocks'},
+            'Amazon': {'symbol': 'AMZN', 'category': 'stocks'},
+            'Meta': {'symbol': 'META', 'category': 'stocks'},
+            'Facebook': {'symbol': 'META', 'category': 'stocks'},
+            'Netflix': {'symbol': 'NFLX', 'category': 'stocks'},
+            'NVIDIA': {'symbol': 'NVDA', 'category': 'stocks'},
+            'AMD': {'symbol': 'AMD', 'category': 'stocks'},
+            'Intel': {'symbol': 'INTC', 'category': 'stocks'},
+            
+            # Financial
+            'JPMorgan': {'symbol': 'JPM', 'category': 'stocks'},
+            'Visa': {'symbol': 'V', 'category': 'stocks'},
+            'Mastercard': {'symbol': 'MA', 'category': 'stocks'},
+            'Bank of America': {'symbol': 'BAC', 'category': 'stocks'},
+            
+            # French companies
+            'LVMH': {'symbol': 'MC.PA', 'category': 'stocks'},
+            'Total': {'symbol': 'TTE.PA', 'category': 'stocks'},
+            'TotalEnergies': {'symbol': 'TTE.PA', 'category': 'stocks'},
+            'Sanofi': {'symbol': 'SAN.PA', 'category': 'stocks'},
+            'Airbus': {'symbol': 'AIR.PA', 'category': 'stocks'},
+            'L\'Oréal': {'symbol': 'OR.PA', 'category': 'stocks'},
+            'Loreal': {'symbol': 'OR.PA', 'category': 'stocks'},
+            
+            # ETFs
+            'S&P 500': {'symbol': 'SPY', 'category': 'etfs'},
+            'SP500': {'symbol': 'SPY', 'category': 'etfs'},
+            'NASDAQ': {'symbol': 'QQQ', 'category': 'etfs'},
+            'CAC 40': {'symbol': '^FCHI', 'category': 'etfs'},
+            'CAC40': {'symbol': '^FCHI', 'category': 'etfs'},
+            
+            # Commodities
+            'Gold': {'symbol': 'GC=F', 'category': 'commodities'},
+            'Or': {'symbol': 'GC=F', 'category': 'commodities'},
+            'Silver': {'symbol': 'SI=F', 'category': 'commodities'},
+            'Argent': {'symbol': 'SI=F', 'category': 'commodities'},
+            'Oil': {'symbol': 'CL=F', 'category': 'commodities'},
+            'Crude Oil': {'symbol': 'CL=F', 'category': 'commodities'},
+            'Pétrole': {'symbol': 'CL=F', 'category': 'commodities'},
+            'Petrole': {'symbol': 'CL=F', 'category': 'commodities'},
+        }
+        
+        mappings.update(additional_mappings)
+        return mappings
+    
+    def _search_coingecko(self, query: str) -> List[Dict]:
+        """Search for cryptocurrencies in CoinGecko"""
+        results = []
+        
+        try:
+            # First, try to search in crypto name mappings
+            crypto_name_mappings = self._get_crypto_name_mappings()
+            query_lower = query.lower()
+            
+            # Search by name in mappings
+            for name, crypto_info in crypto_name_mappings.items():
+                if query_lower in name.lower():
+                    # Try to get current price for validation
+                    try:
+                        price_url = f"https://api.coingecko.com/api/v3/simple/price"
+                        price_params = {
+                            'ids': crypto_info['id'],
+                            'vs_currencies': 'usd'
+                        }
+                        
+                        if Config.COINGECKO_API_KEY:
+                            price_params['x_cg_pro_api_key'] = Config.COINGECKO_API_KEY
+                        
+                        price_response = requests.get(price_url, params=price_params)
+                        if price_response.status_code == 200:
+                            price_data = price_response.json()
+                            current_price = price_data.get(crypto_info['id'], {}).get('usd')
+                            
+                            results.append({
+                                'symbol': crypto_info['symbol'].upper(),
+                                'name': name,
+                                'source': 'coingecko',
+                                'category': 'crypto',
+                                'coingecko_id': crypto_info['id'],
+                                'price': current_price
+                            })
+                    except:
+                        continue
+            
+            # Then use CoinGecko search API
+            url = "https://api.coingecko.com/api/v3/search"
+            params = {'query': query}
+            
+            if Config.COINGECKO_API_KEY:
+                params['x_cg_pro_api_key'] = Config.COINGECKO_API_KEY
+            
+            response = requests.get(url, params=params)
+            response.raise_for_status()
+            
+            data = response.json()
+            
+            # Process coins
+            for coin in data.get('coins', [])[:10]:  # Limit to 10 results
+                # Check if we already have this coin
+                if not any(r['symbol'] == coin['symbol'].upper() for r in results):
+                    results.append({
+                        'symbol': coin['symbol'].upper(),
+                        'name': coin['name'],
+                        'source': 'coingecko',
+                        'category': 'crypto',
+                        'coingecko_id': coin['id'],
+                        'market_cap_rank': coin.get('market_cap_rank')
+                    })
+            
+        except Exception as e:
+            print(f"Error searching CoinGecko: {e}")
+        
+        return results
+    
+    def _get_crypto_name_mappings(self) -> Dict[str, Dict]:
+        """Get a mapping of crypto names to their CoinGecko info for search"""
+        mappings = {}
+        
+        # Add from config
+        for symbol, coingecko_id in Config.CRYPTO_ASSETS.items():
+            # Get display name from config
+            display_name = Config.DISPLAY_NAMES.get(symbol, symbol)
+            mappings[display_name] = {'symbol': symbol, 'id': coingecko_id}
+        
+        # Add common additional crypto mappings
+        additional_mappings = {
+            # Popular cryptocurrencies
+            'Bitcoin': {'symbol': 'BTC', 'id': 'bitcoin'},
+            'Ethereum': {'symbol': 'ETH', 'id': 'ethereum'},
+            'Solana': {'symbol': 'SOL', 'id': 'solana'},
+            'Binance Coin': {'symbol': 'BNB', 'id': 'binancecoin'},
+            'BNB': {'symbol': 'BNB', 'id': 'binancecoin'},
+            'Ripple': {'symbol': 'XRP', 'id': 'ripple'},
+            'XRP': {'symbol': 'XRP', 'id': 'ripple'},
+            'Cardano': {'symbol': 'ADA', 'id': 'cardano'},
+            'Polygon': {'symbol': 'MATIC', 'id': 'matic-network'},
+            'Matic': {'symbol': 'MATIC', 'id': 'matic-network'},
+            'Chainlink': {'symbol': 'LINK', 'id': 'chainlink'},
+            'Polkadot': {'symbol': 'DOT', 'id': 'polkadot'},
+            'Avalanche': {'symbol': 'AVAX', 'id': 'avalanche-2'},
+            'Dogecoin': {'symbol': 'DOGE', 'id': 'dogecoin'},
+            'Shiba Inu': {'symbol': 'SHIB', 'id': 'shiba-inu'},
+            'Litecoin': {'symbol': 'LTC', 'id': 'litecoin'},
+            'Bitcoin Cash': {'symbol': 'BCH', 'id': 'bitcoin-cash'},
+            'Uniswap': {'symbol': 'UNI', 'id': 'uniswap'},
+            'Cosmos': {'symbol': 'ATOM', 'id': 'cosmos'},
+            'Filecoin': {'symbol': 'FIL', 'id': 'filecoin'},
+            'TRON': {'symbol': 'TRX', 'id': 'tron'},
+            'Stellar': {'symbol': 'XLM', 'id': 'stellar'},
+            'VeChain': {'symbol': 'VET', 'id': 'vechain'},
+            'Internet Computer': {'symbol': 'ICP', 'id': 'internet-computer'},
+            'Algorand': {'symbol': 'ALGO', 'id': 'algorand'},
+            'Tezos': {'symbol': 'XTZ', 'id': 'tezos'},
+            'Monero': {'symbol': 'XMR', 'id': 'monero'},
+            'EOS': {'symbol': 'EOS', 'id': 'eos'},
+            'Aave': {'symbol': 'AAVE', 'id': 'aave'},
+            'Maker': {'symbol': 'MKR', 'id': 'maker'},
+            'Compound': {'symbol': 'COMP', 'id': 'compound-governance-token'},
+        }
+        
+        mappings.update(additional_mappings)
+        return mappings
+    
+    def _determine_yahoo_category(self, info: Dict) -> str:
+        """Determine asset category from Yahoo Finance info"""
+        quote_type = info.get('quoteType', '').lower()
+        symbol = info.get('symbol', '')
+        
+        if quote_type == 'cryptocurrency':
+            return 'crypto'
+        elif quote_type == 'etf':
+            return 'etfs'
+        elif quote_type == 'future' or '=F' in symbol:
+            return 'commodities'
+        elif quote_type in ['equity', 'stock']:
+            return 'stocks'
+        elif symbol.startswith('^'):
+            return 'etfs'  # Indices are treated as ETFs
+        else:
+            return 'stocks'  # Default fallback
+    
+    def validate_asset(self, symbol: str, source: str) -> Dict:
+        """Validate that an asset exists and can be fetched"""
+        try:
+            if source == 'yahoo':
+                return self._validate_yahoo_asset(symbol)
+            elif source == 'coingecko':
+                return self._validate_coingecko_asset(symbol)
+            else:
+                return {'valid': False, 'error': 'Invalid source'}
+        except Exception as e:
+            return {'valid': False, 'error': str(e)}
+    
+    def _validate_yahoo_asset(self, symbol: str) -> Dict:
+        """Validate a Yahoo Finance asset"""
+        try:
+            ticker = yf.Ticker(symbol)
+            # Try to get recent data
+            hist = ticker.history(period="5d")
+            
+            if hist.empty:
+                return {'valid': False, 'error': f'No data available for symbol {symbol}'}
+            
+            info = ticker.info
+            name = info.get('longName', info.get('shortName', symbol))
+            
+            return {
+                'valid': True,
+                'name': name,
+                'current_price': info.get('regularMarketPrice'),
+                'currency': info.get('currency', 'USD')
+            }
+            
+        except Exception as e:
+            return {'valid': False, 'error': f'Cannot fetch data for {symbol}: {str(e)}'}
+    
+    def _validate_coingecko_asset(self, symbol: str) -> Dict:
+        """Validate a CoinGecko asset"""
+        try:
+            # First, search for the coin to get its ID
+            url = "https://api.coingecko.com/api/v3/search"
+            params = {'query': symbol}
+            
+            if Config.COINGECKO_API_KEY:
+                params['x_cg_pro_api_key'] = Config.COINGECKO_API_KEY
+            
+            response = requests.get(url, params=params)
+            response.raise_for_status()
+            
+            data = response.json()
+            coins = data.get('coins', [])
+            
+            # Find exact symbol match
+            coin_id = None
+            coin_name = None
+            for coin in coins:
+                if coin['symbol'].upper() == symbol.upper():
+                    coin_id = coin['id']
+                    coin_name = coin['name']
+                    break
+            
+            if not coin_id:
+                return {'valid': False, 'error': f'Cryptocurrency {symbol} not found'}
+            
+            # Try to get price data
+            price_url = f"https://api.coingecko.com/api/v3/simple/price"
+            price_params = {
+                'ids': coin_id,
+                'vs_currencies': 'usd'
+            }
+            
+            if Config.COINGECKO_API_KEY:
+                price_params['x_cg_pro_api_key'] = Config.COINGECKO_API_KEY
+            
+            price_response = requests.get(price_url, params=price_params)
+            price_response.raise_for_status()
+            
+            price_data = price_response.json()
+            current_price = price_data.get(coin_id, {}).get('usd')
+            
+            return {
+                'valid': True,
+                'name': coin_name,
+                'coingecko_id': coin_id,
+                'current_price': current_price,
+                'currency': 'USD'
+            }
+            
+        except Exception as e:
+            return {'valid': False, 'error': f'Cannot validate {symbol}: {str(e)}'}

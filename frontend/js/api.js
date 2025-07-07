@@ -63,8 +63,27 @@ const API = {
         });
     },
     
-
+    // Search for assets in Yahoo Finance and CoinGecko
+    async searchAssets(query) {
+        return this.request('/search-assets', {
+            method: 'POST',
+            body: JSON.stringify({ query })
+        });
+    },
     
+    // Add a custom asset
+    async addCustomAsset(symbol, name, category, source) {
+        return this.request('/add-custom-asset', {
+            method: 'POST',
+            body: JSON.stringify({
+                symbol,
+                name,
+                category,
+                source
+            })
+        });
+    },
+
     // Export correlation data
     async exportData(correlationMatrix) {
         return this.request('/export', {

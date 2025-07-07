@@ -9,6 +9,12 @@ const App = {
             etfs: [],
             commodities: []
         },
+        customAssets: {
+            crypto: [],
+            stocks: [],
+            etfs: [],
+            commodities: []
+        },
         currentData: null,
         loading: false,
         displayToTechnicalMapping: {} // Mapping symbole affiché -> symbole technique
@@ -35,6 +41,11 @@ const App = {
         
         // Initialize with some default selections
         this.setDefaultSelections();
+        
+        // Demo toast notifications (can be removed later)
+        setTimeout(() => {
+            this.showInfo('Vous pouvez maintenant rechercher par nom (Tesla, Apple) ou par symbole (TSLA, AAPL) !', 'Nouvelle fonctionnalité');
+        }, 1000);
     },
     
     // Load available assets from API
@@ -66,10 +77,15 @@ const App = {
     // Render asset grid for a specific category
     renderAssetGrid(category, assets) {
         const container = document.getElementById(`${category}-tab`);
-        container.innerHTML = assets.map(asset => `
-            <div class="asset-item" data-category="${category}" data-symbol="${asset.symbol}" data-technical-symbol="${asset.technical_symbol}">
+        
+        // Combine default assets with custom assets
+        const customAssets = this.state.customAssets[category] || [];
+        const allAssets = [...assets, ...customAssets];
+        
+        container.innerHTML = allAssets.map(asset => `
+            <div class="asset-item${asset.custom ? ' custom-asset' : ''}" data-category="${category}" data-symbol="${asset.symbol}" data-technical-symbol="${asset.technical_symbol}">
                 <div>
-                    <div class="symbol">${asset.symbol}</div>
+                    <div class="symbol">${asset.symbol}${asset.custom ? ' <span class="custom-badge">Personnalisé</span>' : ''}</div>
                     <div class="name">${asset.name}</div>
                 </div>
                 <i class="fas fa-check" style="display: none; color: #10b981;"></i>
@@ -114,6 +130,34 @@ const App = {
         document.getElementById('reset-selection-btn').addEventListener('click', () => {
             this.resetSelection();
         });
+        
+        // Search functionality
+        document.getElementById('search-btn').addEventListener('click', () => {
+            this.searchAssets();
+        });
+        
+        document.getElementById('asset-search').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                this.searchAssets();
+            }
+        });
+        
+        // Manual add functionality
+        document.getElementById('add-manual-btn').addEventListener('click', () => {
+            this.addManualAsset();
+        });
+        
+        // Reset manual form functionality
+        document.getElementById('reset-manual-btn').addEventListener('click', () => {
+            this.resetManualForm();
+        });
+        
+        // Search results click handler
+        document.addEventListener('click', (e) => {
+            if (e.target.closest('.search-result-item')) {
+                this.selectSearchResult(e.target.closest('.search-result-item'));
+            }
+        });
     },
     
     // Switch between asset tabs
@@ -123,9 +167,9 @@ const App = {
             btn.classList.toggle('active', btn.dataset.tab === tab);
         });
         
-        // Update tab content
-        document.querySelectorAll('.asset-grid').forEach(grid => {
-            grid.classList.toggle('active', grid.id === `${tab}-tab`);
+        // Update tab content - handle both asset-grid and custom-asset-section
+        document.querySelectorAll('.asset-grid, .custom-asset-section').forEach(content => {
+            content.classList.toggle('active', content.id === `${tab}-tab`);
         });
     },
     
@@ -295,7 +339,7 @@ const App = {
             window.URL.revokeObjectURL(url);
             document.body.removeChild(a);
             
-            this.showSuccess('Données exportées avec succès');
+            this.showSuccess('Données exportées avec succès', 'Export terminé');
         } catch (error) {
             this.showError('Erreur lors de l\'export');
             console.error(error);
@@ -308,18 +352,321 @@ const App = {
         this.state.loading = show;
     },
     
+    // Show toast notification
+    showToast(message, type = 'info', title = null, duration = 4000) {
+        const container = document.getElementById('toast-container');
+        
+        // Create toast element
+        const toast = document.createElement('div');
+        toast.className = `toast ${type}`;
+        
+        // Define icons for each type
+        const icons = {
+            success: 'fas fa-check-circle',
+            error: 'fas fa-exclamation-circle',
+            warning: 'fas fa-exclamation-triangle',
+            info: 'fas fa-info-circle'
+        };
+        
+        // Define default titles
+        const defaultTitles = {
+            success: 'Succès',
+            error: 'Erreur',
+            warning: 'Attention',
+            info: 'Information'
+        };
+        
+        const toastTitle = title || defaultTitles[type];
+        
+        toast.innerHTML = `
+            <i class="${icons[type]} toast-icon"></i>
+            <div class="toast-content">
+                <div class="toast-title">${toastTitle}</div>
+                <div class="toast-message">${message}</div>
+            </div>
+            <button class="toast-close">
+                <i class="fas fa-times"></i>
+            </button>
+            <div class="toast-progress"></div>
+        `;
+        
+        // Add to container
+        container.appendChild(toast);
+        
+        // Show toast with animation
+        setTimeout(() => {
+            toast.classList.add('show');
+        }, 100);
+        
+        // Auto-remove after duration
+        const timeoutId = setTimeout(() => {
+            this.removeToast(toast);
+        }, duration);
+        
+        // Handle manual close
+        const closeBtn = toast.querySelector('.toast-close');
+        closeBtn.addEventListener('click', () => {
+            clearTimeout(timeoutId);
+            this.removeToast(toast);
+        });
+        
+        // Handle click to close
+        toast.addEventListener('click', () => {
+            clearTimeout(timeoutId);
+            this.removeToast(toast);
+        });
+        
+        return toast;
+    },
+    
+    // Remove toast with animation
+    removeToast(toast) {
+        toast.classList.add('hide');
+        setTimeout(() => {
+            if (toast.parentNode) {
+                toast.parentNode.removeChild(toast);
+            }
+        }, 400);
+    },
+    
     // Show error message
-    showError(message) {
-        // Simple alert for now, can be replaced with a better notification system
-        alert(`Erreur: ${message}`);
+    showError(message, title = null) {
+        this.showToast(message, 'error', title);
     },
     
     // Show success message
-    showSuccess(message) {
-        // Simple alert for now
-        alert(message);
+    showSuccess(message, title = null) {
+        this.showToast(message, 'success', title);
     },
     
+    // Show warning message
+    showWarning(message, title = null) {
+        this.showToast(message, 'warning', title);
+    },
+    
+    // Show info message
+    showInfo(message, title = null) {
+        this.showToast(message, 'info', title);
+    },
+    
+    // Search for assets
+    async searchAssets() {
+        const query = document.getElementById('asset-search').value.trim();
+        const searchBtn = document.getElementById('search-btn');
+        const resultsContainer = document.getElementById('search-results');
+        
+        if (query.length < 2) {
+            this.showError('Veuillez entrer au moins 2 caractères');
+            return;
+        }
+        
+        // Show loading state
+        searchBtn.classList.add('loading');
+        resultsContainer.innerHTML = '<div class="search-loading">Recherche en cours...</div>';
+        
+        try {
+            const response = await API.searchAssets(query);
+            const results = response.results;
+            
+            if (results.length === 0) {
+                resultsContainer.innerHTML = '<div class="search-no-results">Aucun résultat trouvé pour "' + query + '". Essayez avec le nom complet (Tesla, Apple) ou le symbole (TSLA, AAPL).</div>';
+            } else {
+                resultsContainer.innerHTML = results.map(result => `
+                    <div class="search-result-item" data-result='${JSON.stringify(result)}'>
+                        <div class="search-result-info">
+                            <div class="search-result-symbol">${result.symbol}</div>
+                            <div class="search-result-name">${result.name}</div>
+                        </div>
+                        <div class="search-result-details">
+                            <span class="search-result-category">${this.getCategoryDisplayName(result.category)}</span>
+                            <span class="search-result-source">${result.source === 'yahoo' ? 'Yahoo Finance' : 'CoinGecko'}</span>
+                            ${result.price ? `<span class="search-result-price">$${this.formatPrice(result.price)}</span>` : ''}
+                        </div>
+                    </div>
+                `).join('');
+            }
+        } catch (error) {
+            resultsContainer.innerHTML = '<div class="search-no-results">Erreur lors de la recherche: ' + error.message + '</div>';
+            console.error('Search error:', error);
+        } finally {
+            searchBtn.classList.remove('loading');
+        }
+    },
+    
+    // Select a search result
+    selectSearchResult(element) {
+        const resultData = JSON.parse(element.dataset.result);
+        
+        // Pre-fill the manual form
+        document.getElementById('manual-symbol').value = resultData.symbol;
+        document.getElementById('manual-name').value = resultData.name;
+        document.getElementById('manual-category').value = resultData.category;
+        document.getElementById('manual-source').value = resultData.source;
+        
+        // Show and highlight the manual add section with animation
+        const manualSection = document.querySelector('.manual-add-section');
+        manualSection.classList.add('visible');
+        
+        // Small delay to ensure the display transition works
+        setTimeout(() => {
+            manualSection.classList.add('highlighted');
+        }, 100);
+        
+        // Update description to show selected asset
+        const description = document.querySelector('.manual-description');
+        description.innerHTML = `
+            <i class="fas fa-check-circle" style="color: var(--secondary-color);"></i> 
+            Actif sélectionné : <strong>${resultData.name} (${resultData.symbol})</strong><br>
+            Vérifiez les informations ci-dessous et cliquez sur "Ajouter l'actif" pour confirmer
+        `;
+        
+        // Scroll to manual section smoothly after animation starts
+        setTimeout(() => {
+            manualSection.scrollIntoView({ 
+                behavior: 'smooth', 
+                block: 'center' 
+            });
+        }, 200);
+        
+        // Clear search results
+        document.getElementById('search-results').innerHTML = '';
+        document.getElementById('asset-search').value = '';
+        
+        // Remove highlight after successful add (will be handled in addManualAsset)
+        setTimeout(() => {
+            manualSection.classList.remove('highlighted');
+        }, 5000); // Remove highlight after 5 seconds if no action
+    },
+    
+    // Add manual asset
+    async addManualAsset() {
+        const symbol = document.getElementById('manual-symbol').value.trim().toUpperCase();
+        const name = document.getElementById('manual-name').value.trim();
+        const category = document.getElementById('manual-category').value;
+        const source = document.getElementById('manual-source').value;
+        const addBtn = document.getElementById('add-manual-btn');
+        
+        if (!symbol || !name) {
+            this.showError('Veuillez remplir le symbole et le nom');
+            return;
+        }
+        
+        // Check if asset already exists
+        if (this.isAssetAlreadyAdded(symbol, category)) {
+            this.showError('Cet actif est déjà ajouté');
+            return;
+        }
+        
+        addBtn.classList.add('loading');
+        
+        try {
+            const response = await API.addCustomAsset(symbol, name, category, source);
+            
+            if (response.success) {
+                const customAsset = response.asset;
+                
+                // Add to custom assets
+                this.state.customAssets[category].push(customAsset);
+                
+                // Update display mapping
+                this.state.displayToTechnicalMapping[customAsset.symbol] = customAsset.technical_symbol;
+                
+                // Re-render the asset grid for this category
+                const defaultAssets = this.state.availableAssets[category] || [];
+                this.renderAssetGrid(category, defaultAssets);
+                
+                // Automatically add to selection
+                this.addAsset(customAsset.symbol, customAsset.technical_symbol, category);
+                
+                // Clear form
+                document.getElementById('manual-symbol').value = '';
+                document.getElementById('manual-name').value = '';
+                
+                // Reset description and remove highlight
+                const description = document.querySelector('.manual-description');
+                description.innerHTML = 'Vérifiez et modifiez les informations ci-dessous, puis cliquez sur "Ajouter l\'actif"';
+                
+                const manualSection = document.querySelector('.manual-add-section');
+                manualSection.classList.remove('highlighted');
+                manualSection.classList.remove('visible');
+                
+                this.showSuccess(
+                    `${customAsset.name} (${customAsset.symbol}) a été ajouté avec succès dans la catégorie ${this.getCategoryDisplayName(category)}.`,
+                    'Actif ajouté !'
+                );
+                
+                // Switch to the appropriate tab to show the new asset
+                this.switchTab(category);
+            }
+        } catch (error) {
+            this.showError(`Erreur lors de l'ajout: ${error.message}`);
+            console.error('Add asset error:', error);
+        } finally {
+            addBtn.classList.remove('loading');
+        }
+    },
+    
+    // Check if asset is already added
+    isAssetAlreadyAdded(symbol, category) {
+        // Check in default assets
+        const defaultAssets = this.state.availableAssets[category] || [];
+        const existsInDefault = defaultAssets.some(asset => 
+            asset.symbol === symbol || asset.technical_symbol === symbol
+        );
+        
+        // Check in custom assets
+        const customAssets = this.state.customAssets[category] || [];
+        const existsInCustom = customAssets.some(asset => 
+            asset.symbol === symbol || asset.technical_symbol === symbol
+        );
+        
+        return existsInDefault || existsInCustom;
+    },
+    
+    // Get display name for category
+    getCategoryDisplayName(category) {
+        const categoryNames = {
+            'crypto': 'Cryptomonnaies',
+            'stocks': 'Actions',
+            'etfs': 'ETFs / Indices',
+            'commodities': 'Matières Premières'
+        };
+        return categoryNames[category] || category;
+    },
+    
+    // Format price for display
+    formatPrice(price) {
+        if (price < 1) {
+            return price.toFixed(4);
+        } else if (price < 100) {
+            return price.toFixed(2);
+        } else {
+            return Math.round(price).toLocaleString();
+        }
+    },
+
+    // Reset manual form
+    resetManualForm() {
+        // Clear all form fields
+        document.getElementById('manual-symbol').value = '';
+        document.getElementById('manual-name').value = '';
+        document.getElementById('manual-category').value = 'stocks'; // Reset to default
+        document.getElementById('manual-source').value = 'yahoo'; // Reset to default
+        
+        // Reset description
+        const description = document.querySelector('.manual-description');
+        description.innerHTML = 'Vérifiez et modifiez les informations ci-dessous, puis cliquez sur "Ajouter l\'actif"';
+        
+        // Hide and remove highlight from manual section
+        const manualSection = document.querySelector('.manual-add-section');
+        manualSection.classList.remove('highlighted');
+        manualSection.classList.remove('visible');
+        
+        // Clear search results and search input
+        document.getElementById('search-results').innerHTML = '';
+        document.getElementById('asset-search').value = '';
+    },
+
     // Reset selection
     resetSelection() {
         this.state.selectedAssets = {

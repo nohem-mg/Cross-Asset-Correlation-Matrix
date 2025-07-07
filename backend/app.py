@@ -181,5 +181,73 @@ def export_data():
         app.logger.error(f"Error exporting data: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/search-assets', methods=['POST'])
+def search_assets():
+    """Search for assets in Yahoo Finance and CoinGecko"""
+    try:
+        data = request.get_json()
+        
+        if not data or 'query' not in data:
+            return jsonify({'error': 'Missing search query'}), 400
+        
+        query = data['query'].strip()
+        
+        if len(query) < 2:
+            return jsonify({'error': 'Query too short'}), 400
+        
+        results = data_fetcher.search_assets(query)
+        
+        return jsonify({
+            'results': results,
+            'query': query
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error searching assets: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/add-custom-asset', methods=['POST'])
+def add_custom_asset():
+    """Add a custom asset temporarily to the session"""
+    try:
+        data = request.get_json()
+        
+        required_fields = ['symbol', 'name', 'category', 'source']
+        for field in required_fields:
+            if field not in data:
+                return jsonify({'error': f'Missing field: {field}'}), 400
+        
+        symbol = data['symbol'].upper().strip()
+        name = data['name'].strip()
+        category = data['category'].strip()
+        source = data['source'].strip()  # 'yahoo' or 'coingecko'
+        
+        # Validate category
+        valid_categories = ['crypto', 'stocks', 'etfs', 'commodities']
+        if category not in valid_categories:
+            return jsonify({'error': f'Invalid category. Must be one of: {valid_categories}'}), 400
+        
+        # Validate the asset exists and can be fetched
+        validation_result = data_fetcher.validate_asset(symbol, source)
+        
+        if not validation_result['valid']:
+            return jsonify({'error': validation_result['error']}), 400
+        
+        return jsonify({
+            'success': True,
+            'asset': {
+                'symbol': symbol,
+                'name': name,
+                'technical_symbol': symbol,
+                'category': category,
+                'source': source,
+                'custom': True
+            }
+        })
+        
+    except Exception as e:
+        app.logger.error(f"Error adding custom asset: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
 if __name__ == '__main__':
     app.run(debug=Config.DEBUG, port=5000)

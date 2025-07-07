@@ -74,6 +74,9 @@
                     <button class="tab-btn" data-tab="commodities">
                         <i class="fas fa-coins"></i> Matières Premières
                     </button>
+                    <button class="tab-btn" data-tab="custom">
+                        <i class="fas fa-plus"></i> Ajouter un actif
+                    </button>
                 </div>
 
                 <div class="tab-content">
@@ -81,6 +84,58 @@
                     <div id="stocks-tab" class="asset-grid"></div>
                     <div id="etfs-tab" class="asset-grid"></div>
                     <div id="commodities-tab" class="asset-grid"></div>
+                    <div id="custom-tab" class="custom-asset-section">
+                        <div class="search-section">
+                            <h3><i class="fas fa-search"></i> Rechercher un actif</h3>
+                            <p class="search-instruction">Recherchez un actif par son <strong>nom</strong> (Tesla, Apple, Bitcoin) ou son <strong>symbole</strong> (TSLA, AAPL, BTC)</p>
+                            <div class="search-container">
+                                <input type="text" id="asset-search" placeholder="Tapez le nom ou symbole (ex: Tesla, AAPL, Bitcoin, Gold...)" class="search-input">
+                                <button id="search-btn" class="btn btn-primary">
+                                    <i class="fas fa-search"></i> Rechercher
+                                </button>
+                            </div>
+                            <div id="search-results" class="search-results"></div>
+                        </div>
+                        
+                        <div class="manual-add-section">
+                            <h3><i class="fas fa-edit"></i> Confirmer et ajouter l'actif</h3>
+                            <p class="manual-description">Vérifiez et modifiez les informations ci-dessous, puis cliquez sur "Ajouter l'actif"</p>
+                            <div class="manual-form">
+                                <div class="form-group">
+                                    <label for="manual-symbol">Symbole :</label>
+                                    <input type="text" id="manual-symbol" placeholder="ex: AAPL, BTC, MSFT..." class="form-control">
+                                </div>
+                                <div class="form-group">
+                                    <label for="manual-name">Nom :</label>
+                                    <input type="text" id="manual-name" placeholder="ex: Apple Inc., Bitcoin..." class="form-control">
+                                </div>
+                                <div class="form-group">
+                                    <label for="manual-category">Catégorie :</label>
+                                    <select id="manual-category" class="form-control">
+                                        <option value="stocks">Actions</option>
+                                        <option value="crypto">Cryptomonnaies</option>
+                                        <option value="etfs">ETFs / Indices</option>
+                                        <option value="commodities">Matières Premières</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label for="manual-source">Source :</label>
+                                    <select id="manual-source" class="form-control">
+                                        <option value="yahoo">Yahoo Finance</option>
+                                        <option value="coingecko">CoinGecko</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="manual-buttons">
+                                <button id="add-manual-btn" class="btn btn-primary">
+                                    <i class="fas fa-plus"></i> Ajouter l'actif
+                                </button>
+                                <button id="reset-manual-btn" class="btn btn-secondary btn-small">
+                                    <i class="fas fa-undo"></i> Réinitialiser
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
 
                 <div class="selected-assets">
@@ -163,6 +218,9 @@
             <p>Conception et réalisation : Nohem Monnet-Gani<p>
         </footer>
     </div>
+
+    <!-- Toast Notifications -->
+    <div id="toast-container" class="toast-container"></div>
 
     <!-- JavaScript -->
     <script src="js/api.js"></script>
