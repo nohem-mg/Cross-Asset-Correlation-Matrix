@@ -662,7 +662,7 @@ const App = {
         document.getElementById('search-results').innerHTML = '';
         document.getElementById('asset-search').value = '';
     },
-
+    
     // Reset selection
     resetSelection() {
         this.state.selectedAssets = {
