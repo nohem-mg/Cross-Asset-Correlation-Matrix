@@ -39,20 +39,8 @@
                 </div>
 
                 <div class="control-group">
-                    <label for="correlation-method">Méthode :</label>
-                    <select id="correlation-method" class="form-control">
-                        <option value="pearson" selected>Pearson</option>
-                        <option value="spearman">Spearman</option>
-                        <option value="kendall">Kendall</option>
-                    </select>
-                </div>
-
-                <div class="control-group">
                     <button id="calculate-btn" class="btn btn-primary">
-                        <i class="fas fa-calculator"></i> Calculer
-                    </button>
-                    <button id="export-btn" class="btn btn-secondary" disabled>
-                        <i class="fas fa-download"></i> Exporter CSV
+                        <i class="fas fa-calculator"></i> Calculer la Corrélation
                     </button>
                 </div>
             </div>
@@ -153,7 +141,12 @@
             <div id="results-section" class="results-section" style="display: none;">
                 <!-- Correlation Matrix -->
                 <div class="result-card">
-                    <h2><i class="fas fa-th"></i> Matrice de Corrélation</h2>
+                    <div class="correlation-header">
+                        <h2><i class="fas fa-th"></i> Matrice de Corrélation</h2>
+                        <button id="export-btn" class="btn btn-secondary" disabled>
+                            <i class="fas fa-download"></i> Exporter CSV
+                        </button>
+                    </div>
                     <div id="correlation-heatmap"></div>
                 </div>
 
@@ -164,6 +157,11 @@
                         <div class="metric-value" id="diversification-score">-</div>
                         <div class="metric-description">0 = Parfaitement corrélé, 1 = Parfaitement diversifié</div>
                     </div>
+
+                    <div class="metric-card">
+                        <h3>Période analysée</h3>
+                        <div class="metric-value" id="period-range">-</div>
+                    </div>
                     
                     <div class="metric-card">
                         <h3>Points de données</h3>
@@ -171,10 +169,7 @@
                         <div class="metric-description">Nombre de jours analysés</div>
                     </div>
                     
-                    <div class="metric-card">
-                        <h3>Période analysée</h3>
-                        <div class="metric-value" id="period-range">-</div>
-                    </div>
+                
                 </div>
 
                 <!-- Highly Correlated Pairs -->

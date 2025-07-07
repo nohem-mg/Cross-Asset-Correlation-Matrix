@@ -293,9 +293,26 @@ header .subtitle {
 
 .result-card h2, .result-card h3 {
     margin-bottom: 20px;
+    color: var(--text-primary);
     display: flex;
     align-items: center;
     gap: 10px;
+    font-size: 1.5rem;
+}
+
+.correlation-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.correlation-header h2 {
+    margin-bottom: 0;
+}
+
+.correlation-header .btn {
+    flex-shrink: 0;
 }
 
 /* Metrics Grid */
@@ -471,11 +488,20 @@ footer {
     }
     
     .correlation-pairs {
-        grid-template-columns: 1fr;
+        flex-direction: column;
+        gap: 20px;
     }
     
-
+    .correlation-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 15px;
+    }
     
+    .correlation-header .btn {
+        width: 100%;
+    }
+
     .selected-assets-header {
         flex-direction: column;
         align-items: flex-start;

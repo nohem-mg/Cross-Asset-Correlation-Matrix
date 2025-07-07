@@ -42,10 +42,6 @@ const App = {
         // Initialize with some default selections
         this.setDefaultSelections();
         
-        // Demo toast notifications (can be removed later)
-        setTimeout(() => {
-            this.showInfo('Vous pouvez maintenant rechercher par nom (Tesla, Apple) ou par symbole (TSLA, AAPL) !', 'Nouvelle fonctionnalité');
-        }, 1000);
     },
     
     // Load available assets from API
@@ -266,7 +262,7 @@ const App = {
     // Calculate correlation
     async calculateCorrelation() {
         const period = document.getElementById('period-select').value;
-        const correlationMethod = document.getElementById('correlation-method').value;
+        const correlationMethod = 'pearson'; // Always use Pearson correlation
         
         // Check if enough assets selected
         const totalAssets = Object.values(this.state.selectedAssets).flat().length;
