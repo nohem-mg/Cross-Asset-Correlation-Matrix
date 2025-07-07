@@ -10,7 +10,8 @@ const App = {
             commodities: []
         },
         currentData: null,
-        loading: false
+        loading: false,
+        displayToTechnicalMapping: {} // Mapping symbole affiché -> symbole technique
     },
     
     // Initialize the application
@@ -42,6 +43,14 @@ const App = {
             const assets = await API.getAssets();
             this.state.availableAssets = assets;
             
+            // Créer le mapping symbole affiché -> symbole technique
+            this.state.displayToTechnicalMapping = {};
+            for (const [category, assetList] of Object.entries(assets)) {
+                assetList.forEach(asset => {
+                    this.state.displayToTechnicalMapping[asset.symbol] = asset.technical_symbol;
+                });
+            }
+            
             // Render asset grids
             this.renderAssetGrid('crypto', assets.crypto);
             this.renderAssetGrid('stocks', assets.stocks);
@@ -58,7 +67,7 @@ const App = {
     renderAssetGrid(category, assets) {
         const container = document.getElementById(`${category}-tab`);
         container.innerHTML = assets.map(asset => `
-            <div class="asset-item" data-category="${category}" data-symbol="${asset.symbol}">
+            <div class="asset-item" data-category="${category}" data-symbol="${asset.symbol}" data-technical-symbol="${asset.technical_symbol}">
                 <div>
                     <div class="symbol">${asset.symbol}</div>
                     <div class="name">${asset.name}</div>
@@ -82,9 +91,10 @@ const App = {
             }
             
             if (e.target.classList.contains('remove-btn')) {
-                const symbol = e.target.dataset.symbol;
+                const displaySymbol = e.target.dataset.displaySymbol;
+                const technicalSymbol = e.target.dataset.technicalSymbol;
                 const category = e.target.dataset.category;
-                this.removeAsset(symbol, category);
+                this.removeAsset(displaySymbol, technicalSymbol, category);
             }
         });
         
@@ -119,28 +129,29 @@ const App = {
     
     // Toggle asset selection
     toggleAsset(element) {
-        const symbol = element.dataset.symbol;
+        const displaySymbol = element.dataset.symbol;
+        const technicalSymbol = element.dataset.technicalSymbol;
         const category = element.dataset.category;
         const isSelected = element.classList.contains('selected');
         
         if (isSelected) {
-            this.removeAsset(symbol, category);
+            this.removeAsset(displaySymbol, technicalSymbol, category);
         } else {
-            this.addAsset(symbol, category);
+            this.addAsset(displaySymbol, technicalSymbol, category);
         }
     },
     
     // Add asset to selection
-    addAsset(symbol, category) {
-        if (!this.state.selectedAssets[category].includes(symbol)) {
-            this.state.selectedAssets[category].push(symbol);
+    addAsset(displaySymbol, technicalSymbol, category) {
+        if (!this.state.selectedAssets[category].includes(technicalSymbol)) {
+            this.state.selectedAssets[category].push(technicalSymbol);
             this.updateUI();
         }
     },
     
     // Remove asset from selection
-    removeAsset(symbol, category) {
-        const index = this.state.selectedAssets[category].indexOf(symbol);
+    removeAsset(displaySymbol, technicalSymbol, category) {
+        const index = this.state.selectedAssets[category].indexOf(technicalSymbol);
         if (index > -1) {
             this.state.selectedAssets[category].splice(index, 1);
             this.updateUI();
@@ -151,9 +162,9 @@ const App = {
     updateUI() {
         // Update asset items
         document.querySelectorAll('.asset-item').forEach(item => {
-            const symbol = item.dataset.symbol;
+            const technicalSymbol = item.dataset.technicalSymbol;
             const category = item.dataset.category;
-            const isSelected = this.state.selectedAssets[category].includes(symbol);
+            const isSelected = this.state.selectedAssets[category].includes(technicalSymbol);
             
             item.classList.toggle('selected', isSelected);
             item.querySelector('.fa-check').style.display = isSelected ? 'block' : 'none';
@@ -163,16 +174,18 @@ const App = {
         const selectedList = document.getElementById('selected-list');
         const allSelected = [];
         
-        for (const [category, symbols] of Object.entries(this.state.selectedAssets)) {
-            symbols.forEach(symbol => {
-                allSelected.push({ symbol, category });
+        for (const [category, technicalSymbols] of Object.entries(this.state.selectedAssets)) {
+            technicalSymbols.forEach(technicalSymbol => {
+                // Trouver le symbole d'affichage correspondant
+                const displaySymbol = this.findDisplaySymbol(technicalSymbol);
+                allSelected.push({ displaySymbol, technicalSymbol, category });
             });
         }
         
         selectedList.innerHTML = allSelected.map(item => `
             <span class="selected-tag">
-                ${item.symbol}
-                <i class="fas fa-times remove-btn" data-symbol="${item.symbol}" data-category="${item.category}"></i>
+                ${item.displaySymbol}
+                <i class="fas fa-times remove-btn" data-display-symbol="${item.displaySymbol}" data-technical-symbol="${item.technicalSymbol}" data-category="${item.category}"></i>
             </span>
         `).join('');
         
@@ -183,15 +196,25 @@ const App = {
         document.getElementById('calculate-btn').disabled = allSelected.length < 2;
     },
     
+    // Helper function to find display symbol from technical symbol
+    findDisplaySymbol(technicalSymbol) {
+        for (const [displaySymbol, techSymbol] of Object.entries(this.state.displayToTechnicalMapping)) {
+            if (techSymbol === technicalSymbol) {
+                return displaySymbol;
+            }
+        }
+        return technicalSymbol; // fallback
+    },
+    
     // Set default selections
     setDefaultSelections() {
-        // Default selection for demo
-        this.addAsset('BTC', 'crypto');
-        this.addAsset('ETH', 'crypto');
-        this.addAsset('AAPL', 'stocks');
-        this.addAsset('MSFT', 'stocks');
-        this.addAsset('SPY', 'etfs');
-        this.addAsset('GC=F', 'commodities');
+        // Default selection for demo - utiliser les symboles techniques
+        this.addAsset('BTC', 'BTC', 'crypto');
+        this.addAsset('ETH', 'ETH', 'crypto');
+        this.addAsset('AAPL', 'AAPL', 'stocks');
+        this.addAsset('MSFT', 'MSFT', 'stocks');
+        this.addAsset('SPY', 'SPY', 'etfs');
+        this.addAsset('GOLD', 'GC=F', 'commodities');
     },
     
     // Calculate correlation
@@ -222,13 +245,14 @@ const App = {
             document.getElementById('results-section').style.display = 'block';
             
             // Update visualizations
-            ChartModule.createCorrelationHeatmap(data.correlation_matrix, data.assets);
+            ChartModule.createCorrelationHeatmap(data.correlation_matrix, data.assets, data.asset_names);
             ChartModule.updateMetrics(data);
             ChartModule.displayCorrelationPairs(
                 data.highly_correlated.positive,
-                data.highly_correlated.negative
+                data.highly_correlated.negative,
+                data.asset_names
             );
-            ChartModule.createStatisticsTable(data.statistics, data.betas);
+            ChartModule.createStatisticsTable(data.statistics, data.betas, data.asset_names);
             
             // Populate rolling correlation dropdowns
             this.populateRollingDropdowns(data.assets);
@@ -252,7 +276,11 @@ const App = {
         const select1 = document.getElementById('rolling-asset1');
         const select2 = document.getElementById('rolling-asset2');
         
-        const options = assets.map(asset => `<option value="${asset}">${asset}</option>`).join('');
+        // assets contient les symboles techniques, on doit afficher les symboles d'affichage
+        const options = assets.map(technicalSymbol => {
+            const displaySymbol = this.findDisplaySymbol(technicalSymbol);
+            return `<option value="${technicalSymbol}">${displaySymbol}</option>`;
+        }).join('');
         
         select1.innerHTML = options;
         select2.innerHTML = options;

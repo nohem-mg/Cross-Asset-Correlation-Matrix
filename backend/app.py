@@ -28,11 +28,14 @@ def health_check():
 @app.route('/api/assets', methods=['GET'])
 def get_available_assets():
     """Get list of available assets"""
+    def get_display_name(symbol, fallback_name):
+        return Config.DISPLAY_NAMES.get(symbol, fallback_name)
+    
     return jsonify({
-        'crypto': [{'symbol': k, 'name': v} for k, v in Config.CRYPTO_ASSETS.items()],
-        'stocks': [{'symbol': k, 'name': v} for k, v in Config.STOCK_ASSETS.items()],
-        'etfs': [{'symbol': k, 'name': v} for k, v in Config.ETF_ASSETS.items()],
-        'commodities': [{'symbol': k, 'name': v} for k, v in Config.COMMODITY_ASSETS.items()]
+        'crypto': [{'symbol': Config.DISPLAY_SYMBOLS.get(k, k), 'name': get_display_name(k, v), 'technical_symbol': k} for k, v in Config.CRYPTO_ASSETS.items()],
+        'stocks': [{'symbol': Config.DISPLAY_SYMBOLS.get(k, k), 'name': get_display_name(k, v), 'technical_symbol': k} for k, v in Config.STOCK_ASSETS.items()],
+        'etfs': [{'symbol': Config.DISPLAY_SYMBOLS.get(k, k), 'name': get_display_name(k, v), 'technical_symbol': k} for k, v in Config.ETF_ASSETS.items()],
+        'commodities': [{'symbol': Config.DISPLAY_SYMBOLS.get(k, k), 'name': get_display_name(k, v), 'technical_symbol': k} for k, v in Config.COMMODITY_ASSETS.items()]
     })
 
 @app.route('/api/periods', methods=['GET'])
@@ -87,10 +90,28 @@ def calculate_correlation():
         if 'SPY' in returns_df.columns:
             betas = calc.calculate_beta(returns_df, 'SPY')
         
+        # Create mapping of technical symbols to names
+        asset_names = {}
+        for technical_symbol in corr_matrix.columns:
+            # Utiliser DISPLAY_NAMES si disponible, sinon fallback vers les dictionnaires d'actifs
+            if technical_symbol in Config.DISPLAY_NAMES:
+                asset_names[technical_symbol] = Config.DISPLAY_NAMES[technical_symbol]
+            elif technical_symbol in Config.CRYPTO_ASSETS:
+                asset_names[technical_symbol] = Config.CRYPTO_ASSETS[technical_symbol]
+            elif technical_symbol in Config.STOCK_ASSETS:
+                asset_names[technical_symbol] = Config.STOCK_ASSETS[technical_symbol]
+            elif technical_symbol in Config.ETF_ASSETS:
+                asset_names[technical_symbol] = Config.ETF_ASSETS[technical_symbol]
+            elif technical_symbol in Config.COMMODITY_ASSETS:
+                asset_names[technical_symbol] = Config.COMMODITY_ASSETS[technical_symbol]
+            else:
+                asset_names[technical_symbol] = technical_symbol  # fallback
+        
         # Prepare response
         response = {
             'correlation_matrix': corr_matrix.to_dict(),
             'assets': corr_matrix.columns.tolist(),
+            'asset_names': asset_names,  # Ajout du mapping symbole -> nom
             'diversification_score': diversification_score,
             'statistics': statistics,
             'highly_correlated': {

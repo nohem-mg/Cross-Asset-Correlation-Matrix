@@ -18,8 +18,11 @@ const ChartModule = {
     },
     
     // Create correlation heatmap
-    createCorrelationHeatmap(correlationData, assets) {
+    createCorrelationHeatmap(correlationData, assets, assetNames = {}) {
         const container = document.getElementById('correlation-heatmap');
+        
+        // Créer les labels d'affichage (noms complets)
+        const displayLabels = assets.map(asset => assetNames[asset] || asset);
         
         // Prepare data for heatmap
         const zValues = [];
@@ -31,10 +34,10 @@ const ChartModule = {
                 const value = correlationData[assets[i]][assets[j]];
                 row.push(value);
                 
-                // Add text annotations
+                // Add text annotations - utiliser les noms pour les positions
                 annotations.push({
-                    x: assets[j],
-                    y: assets[i],
+                    x: displayLabels[j],
+                    y: displayLabels[i],
                     text: value.toFixed(2),
                     showarrow: false,
                     font: {
@@ -48,8 +51,8 @@ const ChartModule = {
         
         const data = [{
             type: 'heatmap',
-            x: assets,
-            y: assets,
+            x: displayLabels,  // Utiliser les noms au lieu des symboles
+            y: displayLabels,  // Utiliser les noms au lieu des symboles
             z: zValues,
             colorscale: [
                 [0, '#ef4444'],      // Strong negative (red)
@@ -162,7 +165,7 @@ const ChartModule = {
     },
     
     // Create statistics table
-    createStatisticsTable(statistics, betas) {
+    createStatisticsTable(statistics, betas, assetNames = {}) {
         const container = document.getElementById('asset-statistics');
         
         // Create table HTML
@@ -187,10 +190,11 @@ const ChartModule = {
         for (const [asset, stats] of Object.entries(statistics)) {
             const beta = betas[asset] || '-';
             const positivePercentage = ((stats.positive_days / stats.total_days) * 100).toFixed(1);
+            const displayName = assetNames[asset] || asset;  // Utiliser le nom complet si disponible
             
             tableHTML += `
                 <tr>
-                    <td><strong>${asset}</strong></td>
+                    <td><strong>${displayName}</strong></td>
                     <td class="${stats.mean_return > 0 ? 'positive' : 'negative'}">
                         ${(stats.mean_return * 100).toFixed(3)}%
                     </td>
@@ -225,30 +229,38 @@ const ChartModule = {
     },
     
     // Display correlation pairs
-    displayCorrelationPairs(positivePairs, negativePairs) {
+    displayCorrelationPairs(positivePairs, negativePairs, assetNames = {}) {
         const positiveContainer = document.getElementById('positive-pairs');
         const negativeContainer = document.getElementById('negative-pairs');
         
         // Display positive correlations
         if (positivePairs.length > 0) {
-            positiveContainer.innerHTML = positivePairs.map(pair => `
-                <div class="pair-item">
-                    <span class="pair-assets">${pair.asset1} - ${pair.asset2}</span>
-                    <span class="pair-correlation positive">${pair.correlation.toFixed(3)}</span>
-                </div>
-            `).join('');
+            positiveContainer.innerHTML = positivePairs.map(pair => {
+                const name1 = assetNames[pair.asset1] || pair.asset1;
+                const name2 = assetNames[pair.asset2] || pair.asset2;
+                return `
+                    <div class="pair-item">
+                        <span class="pair-assets">${name1} - ${name2}</span>
+                        <span class="pair-correlation positive">${pair.correlation.toFixed(3)}</span>
+                    </div>
+                `;
+            }).join('');
         } else {
             positiveContainer.innerHTML = '<p class="no-data">Aucune paire fortement corrélée positivement</p>';
         }
         
         // Display negative correlations
         if (negativePairs.length > 0) {
-            negativeContainer.innerHTML = negativePairs.map(pair => `
-                <div class="pair-item">
-                    <span class="pair-assets">${pair.asset1} - ${pair.asset2}</span>
-                    <span class="pair-correlation negative">${pair.correlation.toFixed(3)}</span>
-                </div>
-            `).join('');
+            negativeContainer.innerHTML = negativePairs.map(pair => {
+                const name1 = assetNames[pair.asset1] || pair.asset1;
+                const name2 = assetNames[pair.asset2] || pair.asset2;
+                return `
+                    <div class="pair-item">
+                        <span class="pair-assets">${name1} - ${name2}</span>
+                        <span class="pair-correlation negative">${pair.correlation.toFixed(3)}</span>
+                    </div>
+                `;
+            }).join('');
         } else {
             negativeContainer.innerHTML = '<p class="no-data">Aucune paire fortement corrélée négativement</p>';
         }

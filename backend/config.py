@@ -25,10 +25,11 @@ class Config:
         'BNB': 'binancecoin',
         'XRP': 'ripple',
         'ADA': 'cardano',
-        'AVAX': 'avalanche-2',
+        'AVAX':'avalanche-2',
         'DOT': 'polkadot',
         'MATIC': 'matic-network',
-        'LINK': 'chainlink'
+        'LINK': 'chainlink',
+        'HYPE': 'hyperliquid'
     }
     
     STOCK_ASSETS = {
@@ -45,27 +46,125 @@ class Config:
     }
     
     ETF_ASSETS = {
-        'SPY': 'SPDR S&P 500 ETF',
+        'SPY': 'S&P 500 Index',
         'QQQ': 'Invesco QQQ Trust',
         'IWM': 'iShares Russell 2000 ETF',
         'EFA': 'iShares MSCI EAFE ETF',
-        'GLD': 'SPDR Gold Shares',
         'VTI': 'Vanguard Total Stock Market ETF',
         'AGG': 'iShares Core U.S. Aggregate Bond ETF',
-        'EEM': 'iShares MSCI Emerging Markets ETF'
+        'EEM': 'iShares MSCI Emerging Markets ETF',
+        '^FCHI': 'CAC 40 Index',
+        'WPEA.PA': 'iShares MSCI World ETF',
+
     }
     
     COMMODITY_ASSETS = {
-        'GC=F': 'Gold Futures',
-        'SI=F': 'Silver Futures',
-        'CL=F': 'Crude Oil Futures',
-        'NG=F': 'Natural Gas Futures',
-        'ZC=F': 'Corn Futures',
-        'ZW=F': 'Wheat Futures'
+        'GC=F': 'Gold',
+        'SI=F': 'Silver',
+        'CL=F': 'Oil',
+        'NG=F': 'Natural Gas',
+        'ZC=F': 'Corn',
+        'ZW=F': 'Wheat'
+    }
+    
+    # Mapping des symboles d'affichage (symbole technique -> symbole affiché)
+    DISPLAY_SYMBOLS = {
+        # Crypto - garder les symboles standards
+        'BTC': 'BTC',
+        'ETH': 'ETH',
+        'SOL': 'SOL',
+        'BNB': 'BNB',
+        'XRP': 'XRP',
+        'ADA': 'ADA',
+        'AVAX': 'AVAX',
+        'DOT': 'DOT',
+        'MATIC': 'MATIC',
+        'LINK': 'LINK',
+        'HYPE': 'HYPE',
+        
+        # Actions - garder les symboles standards
+        'AAPL': 'AAPL',
+        'MSFT': 'MSFT',
+        'GOOGL': 'GOOGL',
+        'TSLA': 'TSLA',
+        'AMZN': 'AMZN',
+        'META': 'META',
+        'NVDA': 'NVDA',
+        'JPM': 'JPM',
+        'V': 'V',
+        'JNJ': 'JNJ',
+        
+        # ETFs - symboles personnalisés
+        'SPY': 'SP500',
+        'QQQ': 'QQQ',
+        'IWM': 'IWM',
+        'EFA': 'EFA',
+        'GLD': 'GLD',
+        'VTI': 'VTI',
+        'AGG': 'AGG',
+        'EEM': 'EEM',
+        '^FCHI': 'CAC40',
+        'WPEA.PA': 'WPEA',
+        
+        # Matières premières - symboles personnalisés
+        'GC=F': 'GOLD',
+        'SI=F': 'SILVER',
+        'CL=F': 'OIL',
+        'NG=F': 'NATGAS',
+        'ZC=F': 'CORN',
+        'ZW=F': 'WHEAT'
+    }
+    
+    # Mapping des noms d'affichage (symbole technique -> nom affiché)
+    DISPLAY_NAMES = {
+        # Crypto - noms propres
+        'BTC': 'Bitcoin',
+        'ETH': 'Ethereum',
+        'SOL': 'Solana',
+        'BNB': 'Binance Coin',
+        'XRP': 'Ripple',
+        'ADA': 'Cardano',
+        'AVAX': 'Avalanche',
+        'DOT': 'Polkadot',
+        'MATIC': 'Polygon',
+        'LINK': 'Chainlink',
+        'HYPE': 'Hyperliquid',
+        
+        # Actions - noms courts
+        'AAPL': 'Apple',
+        'MSFT': 'Microsoft',
+        'GOOGL': 'Google',
+        'TSLA': 'Tesla',
+        'AMZN': 'Amazon',
+        'META': 'Meta',
+        'NVDA': 'NVIDIA',
+        'JPM': 'JPMorgan',
+        'V': 'Visa',
+        'JNJ': 'Johnson & Johnson',
+        
+        # ETFs - noms courts
+        'SPY': 'S&P 500',
+        'QQQ': 'NASDAQ 100',
+        'IWM': 'Russell 2000',
+        'EFA': 'MSCI EAFE',
+        'VTI': 'Total Stock Market',
+        'AGG': 'US Bonds',
+        'EEM': 'MSCI Emerging Markets',
+        '^FCHI': 'CAC 40',
+        'WPEA.PA': 'MSCI World',
+        
+        # Matières premières - noms français
+        'GC=F': 'Or',
+        'SI=F': 'Argent',
+        'CL=F': 'Pétrole',
+        'NG=F': 'Gaz Naturel',
+        'ZC=F': 'Maïs',
+        'ZW=F': 'Blé'
     }
     
     # Time periods
     TIME_PERIODS = {
+        '7d': {'days': 7, 'label': '7 jours'},
         '30d': {'days': 30, 'label': '30 jours'},
         '90d': {'days': 90, 'label': '90 jours'},
         '180d': {'days': 180, 'label': '6 mois'},
