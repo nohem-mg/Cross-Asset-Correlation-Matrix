@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 from typing import Dict, List, Tuple, Optional
-from scipy import stats
+from scipy import stats as scipy_stats  # Renommé pour éviter le conflit
 
 class CorrelationCalculator:
     
@@ -117,17 +117,17 @@ class CorrelationCalculator:
     @staticmethod
     def calculate_statistics(returns_df: pd.DataFrame) -> Dict:
         """Calculate various statistics for each asset"""
-        stats = {}
+        statistics = {}  # Renommé pour éviter le conflit avec scipy.stats
         
         for asset in returns_df.columns:
             asset_returns = returns_df[asset].dropna()
             
-            stats[asset] = {
+            statistics[asset] = {
                 'mean_return': float(asset_returns.mean()),
                 'volatility': float(asset_returns.std()),
                 'sharpe_ratio': float(asset_returns.mean() / asset_returns.std() * np.sqrt(252)) if asset_returns.std() > 0 else 0,
-                'skewness': float(stats.skew(asset_returns)),
-                'kurtosis': float(stats.kurtosis(asset_returns)),
+                'skewness': float(scipy_stats.skew(asset_returns)),  # Utilise scipy_stats
+                'kurtosis': float(scipy_stats.kurtosis(asset_returns)),  # Utilise scipy_stats
                 'max_return': float(asset_returns.max()),
                 'min_return': float(asset_returns.min()),
                 'positive_days': int((asset_returns > 0).sum()),
@@ -135,7 +135,7 @@ class CorrelationCalculator:
                 'total_days': len(asset_returns)
             }
         
-        return stats
+        return statistics
     
     @staticmethod
     def calculate_beta(returns_df: pd.DataFrame, market_asset: str = 'SPY') -> Dict[str, float]:
