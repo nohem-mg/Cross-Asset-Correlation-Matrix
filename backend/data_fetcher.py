@@ -64,6 +64,12 @@ class DataFetcher:
                 df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
                 df.set_index('timestamp', inplace=True)
                 
+                # Remove timezone info to match stock data
+                df.index = df.index.tz_localize(None)
+                
+                # Normalize to daily data (end of day)
+                df = df.resample('D').last()
+                
                 data_dict[symbol] = df[symbol]
                 
                 # Rate limiting
@@ -75,7 +81,6 @@ class DataFetcher:
         
         if data_dict:
             result = pd.DataFrame(data_dict)
-            result = result.fillna(method='ffill').fillna(method='bfill')
             self.cache[cache_key] = result
             self.cache_timestamps[cache_key] = time.time()
             return result
@@ -98,23 +103,45 @@ class DataFetcher:
             start_date = end_date - timedelta(days=days)
         
         try:
-            # Download data from Yahoo Finance
-            data = yf.download(
-                symbols,
-                start=start_date,
-                end=end_date,
-                progress=False,
-                auto_adjust=True
-            )
-            
-            # Handle single symbol case
+            # Handle single vs multiple symbols differently
             if len(symbols) == 1:
-                result = pd.DataFrame({symbols[0]: data['Close']})
+                # For single symbol, use Ticker object
+                ticker = yf.Ticker(symbols[0])
+                hist = ticker.history(start=start_date, end=end_date, auto_adjust=True)
+                if hist.empty:
+                    print(f"No data returned for {symbols[0]}")
+                    return pd.DataFrame()
+                result = pd.DataFrame({symbols[0]: hist['Close']})
             else:
-                result = data['Close']
+                # For multiple symbols, use download
+                data = yf.download(
+                    symbols,
+                    start=start_date,
+                    end=end_date,
+                    progress=False,
+                    auto_adjust=True,
+                    group_by='ticker'
+                )
+                
+                if data.empty:
+                    print("No data returned from Yahoo Finance")
+                    return pd.DataFrame()
+                
+                # Extract Close prices
+                if len(symbols) > 1:
+                    if 'Close' in data.columns.get_level_values(1):
+                        # Multi-level columns (ticker, metric)
+                        result = data.xs('Close', axis=1, level=1)
+                    else:
+                        # Single level columns
+                        result = data['Close']
+                else:
+                    result = pd.DataFrame({symbols[0]: data['Close']})
             
-            # Clean data
-            result = result.fillna(method='ffill').fillna(method='bfill')
+            # Ensure index is datetime without timezone
+            result.index = pd.to_datetime(result.index)
+            if result.index.tz is not None:
+                result.index = result.index.tz_localize(None)
             
             self.cache[cache_key] = result
             self.cache_timestamps[cache_key] = time.time()
@@ -123,34 +150,65 @@ class DataFetcher:
             
         except Exception as e:
             print(f"Error fetching stock data: {e}")
+            print(f"Symbols: {symbols}")
+            import traceback
+            traceback.print_exc()
             return pd.DataFrame()
     
     def fetch_mixed_assets(self, assets: Dict[str, List[str]], period: str) -> pd.DataFrame:
-        """Fetch data for mixed asset types"""
+        """Fetch data for mixed asset types with better alignment"""
         all_data = []
+        
+        # Debug print
+        print(f"Fetching mixed assets: {assets}")
         
         # Fetch crypto data
         if 'crypto' in assets and assets['crypto']:
             crypto_data = self.fetch_crypto_data(assets['crypto'], period)
             if not crypto_data.empty:
+                print(f"Crypto data shape: {crypto_data.shape}")
                 all_data.append(crypto_data)
         
-        # Fetch stock data
+        # Fetch stock data (including ETFs and commodities)
         stock_symbols = []
         for asset_type in ['stocks', 'etfs', 'commodities']:
-            if asset_type in assets:
+            if asset_type in assets and assets[asset_type]:
                 stock_symbols.extend(assets[asset_type])
         
         if stock_symbols:
             stock_data = self.fetch_stock_data(stock_symbols, period)
             if not stock_data.empty:
+                print(f"Stock data shape: {stock_data.shape}")
                 all_data.append(stock_data)
         
-        # Combine all data
+        # Combine all data with better alignment
         if all_data:
+            # Use outer join to keep all data
             combined = pd.concat(all_data, axis=1, join='outer')
-            # Align dates
-            combined = combined.fillna(method='ffill').fillna(method='bfill')
+            
+            # Sort by index to ensure chronological order
+            combined = combined.sort_index()
+            
+            # Forward fill first (to handle weekends/holidays)
+            combined = combined.ffill()
+            
+            # Then backward fill for any remaining NaN at the beginning
+            combined = combined.bfill()
+            
+            # Drop any rows where all values are still NaN
+            combined = combined.dropna(how='all')
+            
+            # Drop any rows with any NaN (to ensure correlation calculation works)
+            combined = combined.dropna()
+            
+            # Debug print
+            print(f"Combined data shape after cleaning: {combined.shape}")
+            print(f"Columns in combined data: {combined.columns.tolist()}")
+            
+            # Ensure we have enough data points
+            if len(combined) < 10:
+                print(f"Warning: Only {len(combined)} data points after alignment")
+            
             return combined
         
         return pd.DataFrame()
@@ -163,9 +221,10 @@ class DataFetcher:
         data = self.fetch_mixed_assets(assets, '30d')
         
         if not data.empty:
-            latest_prices = data.iloc[-1]
-            for symbol, price in latest_prices.items():
-                if not pd.isna(price):
-                    prices[symbol] = float(price)
+            # Get the last valid price for each asset
+            for symbol in data.columns:
+                last_valid_idx = data[symbol].last_valid_index()
+                if last_valid_idx is not None:
+                    prices[symbol] = float(data.loc[last_valid_idx, symbol])
         
         return prices
