@@ -63,18 +63,7 @@ const API = {
         });
     },
     
-    // Calculate rolling correlation
-    async calculateRollingCorrelation(asset1, asset2, period, window = 30) {
-        return this.request('/rolling-correlation', {
-            method: 'POST',
-            body: JSON.stringify({
-                asset1,
-                asset2,
-                period,
-                window
-            })
-        });
-    },
+
     
     // Export correlation data
     async exportData(correlationMatrix) {

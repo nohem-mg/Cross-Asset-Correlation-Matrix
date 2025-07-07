@@ -108,9 +108,11 @@ const App = {
             this.exportData();
         });
         
-        // Rolling correlation
-        document.getElementById('rolling-calculate').addEventListener('click', () => {
-            this.calculateRollingCorrelation();
+
+        
+        // Reset selection button
+        document.getElementById('reset-selection-btn').addEventListener('click', () => {
+            this.resetSelection();
         });
     },
     
@@ -254,8 +256,10 @@ const App = {
             );
             ChartModule.createStatisticsTable(data.statistics, data.betas, data.asset_names);
             
-            // Populate rolling correlation dropdowns
-            this.populateRollingDropdowns(data.assets);
+            // Create performance comparison
+            ChartModule.createPerformanceComparison(data.performance_comparison, data.asset_names, period);
+            
+
             
             // Enable export button
             document.getElementById('export-btn').disabled = false;
@@ -271,49 +275,7 @@ const App = {
         }
     },
     
-    // Populate rolling correlation dropdowns
-    populateRollingDropdowns(assets) {
-        const select1 = document.getElementById('rolling-asset1');
-        const select2 = document.getElementById('rolling-asset2');
-        
-        // assets contient les symboles techniques, on doit afficher les symboles d'affichage
-        const options = assets.map(technicalSymbol => {
-            const displaySymbol = this.findDisplaySymbol(technicalSymbol);
-            return `<option value="${technicalSymbol}">${displaySymbol}</option>`;
-        }).join('');
-        
-        select1.innerHTML = options;
-        select2.innerHTML = options;
-        
-        // Select different assets by default
-        if (assets.length >= 2) {
-            select2.selectedIndex = 1;
-        }
-    },
-    
-    // Calculate rolling correlation
-    async calculateRollingCorrelation() {
-        const asset1 = document.getElementById('rolling-asset1').value;
-        const asset2 = document.getElementById('rolling-asset2').value;
-        const period = document.getElementById('period-select').value;
-        
-        if (asset1 === asset2) {
-            this.showError('Veuillez sélectionner deux actifs différents');
-            return;
-        }
-        
-        this.showLoading(true);
-        
-        try {
-            const data = await API.calculateRollingCorrelation(asset1, asset2, period);
-            ChartModule.createRollingCorrelationChart(data.dates, data.values, asset1, asset2);
-        } catch (error) {
-            this.showError(`Erreur lors du calcul: ${error.message}`);
-            console.error(error);
-        } finally {
-            this.showLoading(false);
-        }
-    },
+
     
     // Export data
     async exportData() {
@@ -356,6 +318,17 @@ const App = {
     showSuccess(message) {
         // Simple alert for now
         alert(message);
+    },
+    
+    // Reset selection
+    resetSelection() {
+        this.state.selectedAssets = {
+            crypto: [],
+            stocks: [],
+            etfs: [],
+            commodities: []
+        };
+        this.updateUI();
     }
 };
 

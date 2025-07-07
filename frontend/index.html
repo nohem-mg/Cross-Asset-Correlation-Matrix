@@ -84,7 +84,12 @@
                 </div>
 
                 <div class="selected-assets">
-                    <h3>Actifs sélectionnés (<span id="selected-count">0</span>)</h3>
+                    <div class="selected-assets-header">
+                        <h3>Actifs sélectionnés (<span id="selected-count">0</span>)</h3>
+                        <button id="reset-selection-btn" class="btn btn-small btn-secondary">
+                            <i class="fas fa-times"></i> Réinitialiser
+                        </button>
+                    </div>
                     <div id="selected-list" class="selected-list"></div>
                 </div>
             </div>
@@ -114,7 +119,6 @@
                     <div class="metric-card">
                         <h3>Période analysée</h3>
                         <div class="metric-value" id="period-range">-</div>
-                        <div class="metric-description">Du <span id="start-date">-</span> au <span id="end-date">-</span></div>
                     </div>
                 </div>
 
@@ -137,17 +141,13 @@
                     <div id="asset-statistics"></div>
                 </div>
 
-                <!-- Rolling Correlation -->
+                <!-- Performance Comparison -->
                 <div class="result-card">
-                    <h2><i class="fas fa-chart-area"></i> Corrélation Glissante</h2>
-                    <div class="rolling-controls">
-                        <select id="rolling-asset1" class="form-control"></select>
-                        <span>vs</span>
-                        <select id="rolling-asset2" class="form-control"></select>
-                        <button id="rolling-calculate" class="btn btn-small">Calculer</button>
-                    </div>
-                    <div id="rolling-correlation-chart"></div>
+                    <h2><i class="fas fa-trophy"></i> Performance Relative</h2>
+                    <div id="performance-comparison"></div>
                 </div>
+
+
             </div>
 
             <!-- Loading Spinner -->

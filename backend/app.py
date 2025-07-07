@@ -90,6 +90,9 @@ def calculate_correlation():
         if 'SPY' in returns_df.columns:
             betas = calc.calculate_beta(returns_df, 'SPY')
         
+        # Calculate performance comparison
+        performance_comparison = calc.calculate_performance_comparison(prices_df)
+        
         # Create mapping of technical symbols to names
         asset_names = {}
         for technical_symbol in corr_matrix.columns:
@@ -114,6 +117,7 @@ def calculate_correlation():
             'asset_names': asset_names,  # Ajout du mapping symbole -> nom
             'diversification_score': diversification_score,
             'statistics': statistics,
+            'performance_comparison': performance_comparison,  # Ajout des performances
             'highly_correlated': {
                 'positive': positive_pairs[:10],  # Top 10
                 'negative': negative_pairs[:10]
@@ -151,69 +155,7 @@ def get_latest_prices():
         app.logger.error(f"Error fetching prices: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/rolling-correlation', methods=['POST'])
-def calculate_rolling_correlation():
-    """Calculate rolling correlation between two assets"""
-    try:
-        data = request.get_json()
-        
-        # Validate input
-        required_fields = ['asset1', 'asset2', 'period']
-        if not all(field in data for field in required_fields):
-            return jsonify({'error': 'Missing required parameters'}), 400
-        
-        # Extract parameters
-        asset1 = data['asset1']
-        asset2 = data['asset2']
-        period = data['period']
-        window = data.get('window', 30)
-        
-        # Determine asset types
-        assets = {'crypto': [], 'stocks': [], 'etfs': [], 'commodities': []}
-        
-        for asset in [asset1, asset2]:
-            if asset in Config.CRYPTO_ASSETS:
-                assets['crypto'].append(asset)
-            elif asset in Config.STOCK_ASSETS:
-                assets['stocks'].append(asset)
-            elif asset in Config.ETF_ASSETS:
-                assets['etfs'].append(asset)
-            elif asset in Config.COMMODITY_ASSETS:
-                assets['commodities'].append(asset)
-        
-        # Fetch data
-        prices_df = data_fetcher.fetch_mixed_assets(assets, period)
-        
-        if prices_df.empty or asset1 not in prices_df.columns or asset2 not in prices_df.columns:
-            return jsonify({'error': 'Data not available for selected assets'}), 404
-        
-        # Calculate returns
-        returns_df = calc.calculate_returns(prices_df)
-        
-        # Calculate rolling correlation
-        rolling_corr = calc.calculate_rolling_correlation(
-            returns_df, 
-            window=window, 
-            asset1=asset1, 
-            asset2=asset2
-        )
-        
-        # Prepare data for response
-        dates = rolling_corr.index.strftime('%Y-%m-%d').tolist()
-        values = rolling_corr.iloc[:, 0].fillna(0).tolist()
-        
-        return jsonify({
-            'dates': dates,
-            'values': values,
-            'asset1': asset1,
-            'asset2': asset2,
-            'window': window,
-            'current_correlation': values[-1] if values else 0
-        })
-        
-    except Exception as e:
-        app.logger.error(f"Error calculating rolling correlation: {str(e)}")
-        return jsonify({'error': str(e)}), 500
+
 
 @app.route('/api/export', methods=['POST'])
 def export_data():

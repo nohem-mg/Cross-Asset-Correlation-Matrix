@@ -55,6 +55,7 @@ class Config:
         'EEM': 'iShares MSCI Emerging Markets ETF',
         '^FCHI': 'CAC 40 Index',
         'WPEA.PA': 'iShares MSCI World ETF',
+        'PAEEM.PA': 'iShares MSCI Emerging Markets ETF'
 
     }
     
@@ -105,6 +106,7 @@ class Config:
         'EEM': 'EEM',
         '^FCHI': 'CAC40',
         'WPEA.PA': 'WPEA',
+        'PAEEM.PA': 'PAEEM',
         
         # Matières premières - symboles personnalisés
         'GC=F': 'GOLD',
@@ -151,7 +153,8 @@ class Config:
         'AGG': 'US Bonds',
         'EEM': 'MSCI Emerging Markets',
         '^FCHI': 'CAC 40',
-        'WPEA.PA': 'MSCI World',
+        'WPEA.PA': 'MSCI World EUR',
+        'PAEEM.PA': 'MSCI Emerging Markets EUR',
         
         # Matières premières - noms français
         'GC=F': 'Or',

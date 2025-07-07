@@ -33,27 +33,7 @@ class CorrelationCalculator:
         
         return corr_matrix
     
-    @staticmethod
-    def calculate_rolling_correlation(returns_df: pd.DataFrame, 
-                                    window: int = 30,
-                                    asset1: Optional[str] = None,
-                                    asset2: Optional[str] = None) -> pd.DataFrame:
-        """Calculate rolling correlation between assets"""
-        if asset1 and asset2:
-            if asset1 in returns_df.columns and asset2 in returns_df.columns:
-                rolling_corr = returns_df[asset1].rolling(window).corr(returns_df[asset2])
-                return pd.DataFrame({f'{asset1}_vs_{asset2}': rolling_corr})
-        
-        # Calculate all pairwise rolling correlations
-        assets = returns_df.columns.tolist()
-        rolling_corrs = {}
-        
-        for i, asset1 in enumerate(assets):
-            for j, asset2 in enumerate(assets[i+1:], i+1):
-                corr_series = returns_df[asset1].rolling(window).corr(returns_df[asset2])
-                rolling_corrs[f'{asset1}_vs_{asset2}'] = corr_series
-        
-        return pd.DataFrame(rolling_corrs)
+
     
     @staticmethod
     def calculate_diversification_score(corr_matrix: pd.DataFrame) -> float:
@@ -166,3 +146,28 @@ class CorrelationCalculator:
                 betas[asset] = 0.0
         
         return betas
+    
+    @staticmethod
+    def calculate_performance_comparison(prices_df: pd.DataFrame) -> Dict:
+        """Calculate performance comparison for all assets over the period"""
+        if prices_df.empty:
+            return {}
+        
+        # Calculate total return for each asset
+        first_prices = prices_df.iloc[0]
+        last_prices = prices_df.iloc[-1]
+        
+        performance_data = {}
+        
+        for asset in prices_df.columns:
+            if pd.notna(first_prices[asset]) and pd.notna(last_prices[asset]) and first_prices[asset] > 0:
+                total_return = ((last_prices[asset] - first_prices[asset]) / first_prices[asset]) * 100
+                performance_data[asset] = {
+                    'total_return': float(total_return),
+                    'start_price': float(first_prices[asset]),
+                    'end_price': float(last_prices[asset]),
+                    'start_date': prices_df.index[0].strftime('%Y-%m-%d'),
+                    'end_date': prices_df.index[-1].strftime('%Y-%m-%d')
+                }
+        
+        return performance_data

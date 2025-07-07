@@ -242,8 +242,16 @@ header .subtitle {
     border-top: 1px solid var(--border-color);
 }
 
-.selected-assets h3 {
+.selected-assets-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
     margin-bottom: 15px;
+    gap: 20px;
+}
+
+.selected-assets h3 {
+    margin-bottom: 0;
     font-size: 1.2rem;
 }
 
@@ -319,7 +327,7 @@ header .subtitle {
 }
 
 .metric-value {
-    font-size: 2.5rem;
+    font-size: 1.5rem;
     font-weight: 700;
     color: var(--primary-color);
     margin-bottom: 10px;
@@ -403,18 +411,7 @@ header .subtitle {
     background: rgba(37, 99, 235, 0.05);
 }
 
-/* Rolling Correlation */
-.rolling-controls {
-    display: flex;
-    gap: 15px;
-    align-items: center;
-    margin-bottom: 20px;
-}
 
-.rolling-controls select {
-    flex: 1;
-    max-width: 200px;
-}
 
 /* Loading Spinner */
 .loading {
@@ -439,8 +436,7 @@ header .subtitle {
 }
 
 /* Plotly Chart Container */
-#correlation-heatmap,
-#rolling-correlation-chart {
+#correlation-heatmap {
     height: 500px;
 }
 
@@ -478,11 +474,15 @@ footer {
         grid-template-columns: 1fr;
     }
     
-    .rolling-controls {
+
+    
+    .selected-assets-header {
         flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
     }
     
-    .rolling-controls select {
-        max-width: 100%;
+    .selected-assets-header h3 {
+        margin-bottom: 0;
     }
 }
