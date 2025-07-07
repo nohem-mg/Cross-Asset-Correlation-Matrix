@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Matrice de Corrélation Multi-Actifs</title>
+    
+    <!-- CSS -->
+    <link rel="stylesheet" href="css/styles.css">
+    
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    
+    <!-- Plotly.js -->
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header>
+            <h1><i class="fas fa-chart-line"></i> Matrice de Corrélation Multi-Actifs</h1>
+            <p class="subtitle">Analysez les corrélations entre cryptomonnaies, actions, ETFs et matières premières</p>
+        </header>
+
+        <!-- Main Content -->
+        <main>
+            <!-- Controls Section -->
+            <div class="controls-section">
+                <div class="control-group">
+                    <label for="period-select">Période :</label>
+                    <select id="period-select" class="form-control">
+                        <option value="30d">30 jours</option>
+                        <option value="90d" selected>90 jours</option>
+                        <option value="180d">6 mois</option>
+                        <option value="1y">1 an</option>
+                        <option value="ytd">Depuis début d'année</option>
+                    </select>
+                </div>
+
+                <div class="control-group">
+                    <label for="correlation-method">Méthode :</label>
+                    <select id="correlation-method" class="form-control">
+                        <option value="pearson" selected>Pearson</option>
+                        <option value="spearman">Spearman</option>
+                        <option value="kendall">Kendall</option>
+                    </select>
+                </div>
+
+                <div class="control-group">
+                    <button id="calculate-btn" class="btn btn-primary">
+                        <i class="fas fa-calculator"></i> Calculer
+                    </button>
+                    <button id="export-btn" class="btn btn-secondary" disabled>
+                        <i class="fas fa-download"></i> Exporter CSV
+                    </button>
+                </div>
+            </div>
+
+            <!-- Asset Selection -->
+            <div class="asset-selection">
+                <h2>Sélection des Actifs</h2>
+                
+                <div class="asset-tabs">
+                    <button class="tab-btn active" data-tab="crypto">
+                        <i class="fab fa-bitcoin"></i> Crypto
+                    </button>
+                    <button class="tab-btn" data-tab="stocks">
+                        <i class="fas fa-chart-bar"></i> Actions
+                    </button>
+                    <button class="tab-btn" data-tab="etfs">
+                        <i class="fas fa-briefcase"></i> ETFs
+                    </button>
+                    <button class="tab-btn" data-tab="commodities">
+                        <i class="fas fa-coins"></i> Matières Premières
+                    </button>
+                </div>
+
+                <div class="tab-content">
+                    <div id="crypto-tab" class="asset-grid active"></div>
+                    <div id="stocks-tab" class="asset-grid"></div>
+                    <div id="etfs-tab" class="asset-grid"></div>
+                    <div id="commodities-tab" class="asset-grid"></div>
+                </div>
+
+                <div class="selected-assets">
+                    <h3>Actifs sélectionnés (<span id="selected-count">0</span>)</h3>
+                    <div id="selected-list" class="selected-list"></div>
+                </div>
+            </div>
+
+            <!-- Results Section -->
+            <div id="results-section" class="results-section" style="display: none;">
+                <!-- Correlation Matrix -->
+                <div class="result-card">
+                    <h2><i class="fas fa-th"></i> Matrice de Corrélation</h2>
+                    <div id="correlation-heatmap"></div>
+                </div>
+
+                <!-- Metrics -->
+                <div class="metrics-grid">
+                    <div class="metric-card">
+                        <h3>Score de Diversification</h3>
+                        <div class="metric-value" id="diversification-score">-</div>
+                        <div class="metric-description">0 = Parfaitement corrélé, 1 = Parfaitement diversifié</div>
+                    </div>
+                    
+                    <div class="metric-card">
+                        <h3>Points de données</h3>
+                        <div class="metric-value" id="data-points">-</div>
+                        <div class="metric-description">Nombre de jours analysés</div>
+                    </div>
+                    
+                    <div class="metric-card">
+                        <h3>Période analysée</h3>
+                        <div class="metric-value" id="period-range">-</div>
+                        <div class="metric-description">Du <span id="start-date">-</span> au <span id="end-date">-</span></div>
+                    </div>
+                </div>
+
+                <!-- Highly Correlated Pairs -->
+                <div class="correlation-pairs">
+                    <div class="result-card">
+                        <h3><i class="fas fa-link"></i> Paires fortement corrélées (positif)</h3>
+                        <div id="positive-pairs" class="pairs-list"></div>
+                    </div>
+                    
+                    <div class="result-card">
+                        <h3><i class="fas fa-unlink"></i> Paires fortement corrélées (négatif)</h3>
+                        <div id="negative-pairs" class="pairs-list"></div>
+                    </div>
+                </div>
+
+                <!-- Asset Statistics -->
+                <div class="result-card">
+                    <h2><i class="fas fa-chart-pie"></i> Statistiques des Actifs</h2>
+                    <div id="asset-statistics"></div>
+                </div>
+
+                <!-- Rolling Correlation -->
+                <div class="result-card">
+                    <h2><i class="fas fa-chart-area"></i> Corrélation Glissante</h2>
+                    <div class="rolling-controls">
+                        <select id="rolling-asset1" class="form-control"></select>
+                        <span>vs</span>
+                        <select id="rolling-asset2" class="form-control"></select>
+                        <button id="rolling-calculate" class="btn btn-small">Calculer</button>
+                    </div>
+                    <div id="rolling-correlation-chart"></div>
+                </div>
+            </div>
+
+            <!-- Loading Spinner -->
+            <div id="loading" class="loading" style="display: none;">
+                <div class="spinner"></div>
+                <p>Chargement des données...</p>
+            </div>
+        </main>
+
+        <!-- Footer -->
+        <footer>
+            <p>&copy; 2024 Matrice de Corrélation Multi-Actifs | Données fournies par Yahoo Finance & CoinGecko</p>
+        </footer>
+    </div>
+
+    <!-- JavaScript -->
+    <script src="js/api.js"></script>
+    <script src="js/chart.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
