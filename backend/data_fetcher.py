@@ -275,13 +275,16 @@ class DataFetcher:
         coingecko_results = self._search_coingecko(query)
         results.extend(coingecko_results)
         
-        # Remove duplicates and limit results
+        # Remove duplicates and sort by relevance
         seen_symbols = set()
         unique_results = []
         for result in results:
             if result['symbol'] not in seen_symbols:
                 seen_symbols.add(result['symbol'])
                 unique_results.append(result)
+        
+        # Sort by relevance score (highest first), then by name
+        unique_results.sort(key=lambda x: (-x.get('relevance', 0), x['name'].lower()))
         
         return unique_results[:20]  # Limit to 20 results
     
@@ -294,22 +297,39 @@ class DataFetcher:
             name_to_symbol_mappings = self._get_name_to_symbol_mappings()
             query_lower = query.lower()
             
-            # Search by name in mappings
+            # Search by name in mappings with improved matching
             for name, symbol_info in name_to_symbol_mappings.items():
-                if query_lower in name.lower():
+                name_lower = name.lower()
+                # Check for exact word matches or partial matches
+                if (query_lower in name_lower or 
+                    any(word in name_lower for word in query_lower.split()) or
+                    any(word in query_lower for word in name_lower.split())):
+                    
                     # Try to get data for this symbol to validate it
                     try:
                         ticker = yf.Ticker(symbol_info['symbol'])
                         info = ticker.info
                         
                         if info and 'symbol' in info and info.get('regularMarketPrice'):
+                            # Calculate relevance score for better ordering
+                            relevance_score = 0
+                            if query_lower == name_lower:
+                                relevance_score = 100  # Exact match
+                            elif name_lower.startswith(query_lower):
+                                relevance_score = 90   # Starts with query
+                            elif query_lower in name_lower:
+                                relevance_score = 80   # Contains query
+                            else:
+                                relevance_score = 70   # Word match
+                            
                             results.append({
                                 'symbol': symbol_info['symbol'],
                                 'name': name,
                                 'source': 'yahoo',
                                 'category': symbol_info['category'],
                                 'price': info.get('regularMarketPrice'),
-                                'currency': info.get('currency', 'USD')
+                                'currency': info.get('currency', 'USD'),
+                                'relevance': relevance_score
                             })
                     except:
                         continue
@@ -337,13 +357,21 @@ class DataFetcher:
                                 # Determine category based on asset type
                                 category = self._determine_yahoo_category(info)
                                 
+                                # Calculate relevance for symbol-based search
+                                symbol_relevance = 50  # Lower than name matches
+                                if query.upper() == symbol:
+                                    symbol_relevance = 95
+                                elif symbol.startswith(query.upper()):
+                                    symbol_relevance = 85
+                                
                                 results.append({
                                     'symbol': symbol,
                                     'name': name,
                                     'source': 'yahoo',
                                     'category': category,
                                     'price': info.get('regularMarketPrice'),
-                                    'currency': info.get('currency', 'USD')
+                                    'currency': info.get('currency', 'USD'),
+                                    'relevance': symbol_relevance
                                 })
                     
                     time.sleep(0.1)  # Rate limiting
@@ -386,11 +414,69 @@ class DataFetcher:
             'AMD': {'symbol': 'AMD', 'category': 'stocks'},
             'Intel': {'symbol': 'INTC', 'category': 'stocks'},
             
+            # Other popular companies
+            'Coca Cola': {'symbol': 'KO', 'category': 'stocks'},
+            'Coca-Cola': {'symbol': 'KO', 'category': 'stocks'},
+            'PepsiCo': {'symbol': 'PEP', 'category': 'stocks'},
+            'Pepsi': {'symbol': 'PEP', 'category': 'stocks'},
+            'Johnson & Johnson': {'symbol': 'JNJ', 'category': 'stocks'},
+            'J&J': {'symbol': 'JNJ', 'category': 'stocks'},
+            'Procter & Gamble': {'symbol': 'PG', 'category': 'stocks'},
+            'P&G': {'symbol': 'PG', 'category': 'stocks'},
+            'Walmart': {'symbol': 'WMT', 'category': 'stocks'},
+            'Home Depot': {'symbol': 'HD', 'category': 'stocks'},
+            'McDonalds': {'symbol': 'MCD', 'category': 'stocks'},
+            'McDonald\'s': {'symbol': 'MCD', 'category': 'stocks'},
+            'Disney': {'symbol': 'DIS', 'category': 'stocks'},
+            'Walt Disney': {'symbol': 'DIS', 'category': 'stocks'},
+            'Nike': {'symbol': 'NKE', 'category': 'stocks'},
+            'Boeing': {'symbol': 'BA', 'category': 'stocks'},
+            'Caterpillar': {'symbol': 'CAT', 'category': 'stocks'},
+            'Exxon Mobil': {'symbol': 'XOM', 'category': 'stocks'},
+            'Exxon': {'symbol': 'XOM', 'category': 'stocks'},
+            'Chevron': {'symbol': 'CVX', 'category': 'stocks'},
+            'Pfizer': {'symbol': 'PFE', 'category': 'stocks'},
+            'Merck': {'symbol': 'MRK', 'category': 'stocks'},
+            'IBM': {'symbol': 'IBM', 'category': 'stocks'},
+            'Oracle': {'symbol': 'ORCL', 'category': 'stocks'},
+            'Salesforce': {'symbol': 'CRM', 'category': 'stocks'},
+            'Adobe': {'symbol': 'ADBE', 'category': 'stocks'},
+            'PayPal': {'symbol': 'PYPL', 'category': 'stocks'},
+            'Uber': {'symbol': 'UBER', 'category': 'stocks'},
+            'Spotify': {'symbol': 'SPOT', 'category': 'stocks'},
+            'Twitter': {'symbol': 'TWTR', 'category': 'stocks'},
+            'Square': {'symbol': 'SQ', 'category': 'stocks'},
+            'Block': {'symbol': 'SQ', 'category': 'stocks'},
+            
+            # German companies
+            'SAP': {'symbol': 'SAP', 'category': 'stocks'},
+            'Siemens': {'symbol': 'SIE.DE', 'category': 'stocks'},
+            'Volkswagen': {'symbol': 'VOW3.DE', 'category': 'stocks'},
+            'VW': {'symbol': 'VOW3.DE', 'category': 'stocks'},
+            'BMW': {'symbol': 'BMW.DE', 'category': 'stocks'},
+            'Mercedes': {'symbol': 'MBG.DE', 'category': 'stocks'},
+            'Mercedes-Benz': {'symbol': 'MBG.DE', 'category': 'stocks'},
+            'Daimler': {'symbol': 'MBG.DE', 'category': 'stocks'},
+            'Bayer': {'symbol': 'BAYN.DE', 'category': 'stocks'},
+            'BASF': {'symbol': 'BAS.DE', 'category': 'stocks'},
+            'Adidas': {'symbol': 'ADS.DE', 'category': 'stocks'},
+            'Allianz': {'symbol': 'ALV.DE', 'category': 'stocks'},
+            
             # Financial
             'JPMorgan': {'symbol': 'JPM', 'category': 'stocks'},
+            'JP Morgan': {'symbol': 'JPM', 'category': 'stocks'},
             'Visa': {'symbol': 'V', 'category': 'stocks'},
             'Mastercard': {'symbol': 'MA', 'category': 'stocks'},
             'Bank of America': {'symbol': 'BAC', 'category': 'stocks'},
+            'Goldman Sachs': {'symbol': 'GS', 'category': 'stocks'},
+            'Goldman': {'symbol': 'GS', 'category': 'stocks'},
+            'Wells Fargo': {'symbol': 'WFC', 'category': 'stocks'},
+            'Wells': {'symbol': 'WFC', 'category': 'stocks'},
+            'Citigroup': {'symbol': 'C', 'category': 'stocks'},
+            'Citi': {'symbol': 'C', 'category': 'stocks'},
+            'Morgan Stanley': {'symbol': 'MS', 'category': 'stocks'},
+            'American Express': {'symbol': 'AXP', 'category': 'stocks'},
+            'Amex': {'symbol': 'AXP', 'category': 'stocks'},
             
             # French companies
             'LVMH': {'symbol': 'MC.PA', 'category': 'stocks'},
@@ -400,6 +486,44 @@ class DataFetcher:
             'Airbus': {'symbol': 'AIR.PA', 'category': 'stocks'},
             'L\'Oréal': {'symbol': 'OR.PA', 'category': 'stocks'},
             'Loreal': {'symbol': 'OR.PA', 'category': 'stocks'},
+            'Michelin': {'symbol': 'ML.PA', 'category': 'stocks'},
+            'Compagnie Générale des Établissements Michelin': {'symbol': 'ML.PA', 'category': 'stocks'},
+            'Schneider Electric': {'symbol': 'SU.PA', 'category': 'stocks'},
+            'Schneider': {'symbol': 'SU.PA', 'category': 'stocks'},
+            'Société Générale': {'symbol': 'GLE.PA', 'category': 'stocks'},
+            'SocGen': {'symbol': 'GLE.PA', 'category': 'stocks'},
+            'BNP Paribas': {'symbol': 'BNP.PA', 'category': 'stocks'},
+            'BNP': {'symbol': 'BNP.PA', 'category': 'stocks'},
+            'Dassault Systèmes': {'symbol': 'DSY.PA', 'category': 'stocks'},
+            'Dassault': {'symbol': 'DSY.PA', 'category': 'stocks'},
+            'Vinci': {'symbol': 'DG.PA', 'category': 'stocks'},
+            'Saint-Gobain': {'symbol': 'SGO.PA', 'category': 'stocks'},
+            'Saint Gobain': {'symbol': 'SGO.PA', 'category': 'stocks'},
+            'Kering': {'symbol': 'KER.PA', 'category': 'stocks'},
+            'Hermès': {'symbol': 'RMS.PA', 'category': 'stocks'},
+            'Hermes': {'symbol': 'RMS.PA', 'category': 'stocks'},
+            'Vivendi': {'symbol': 'VIV.PA', 'category': 'stocks'},
+            'Orange': {'symbol': 'ORA.PA', 'category': 'stocks'},
+            'Danone': {'symbol': 'BN.PA', 'category': 'stocks'},
+            'Pernod Ricard': {'symbol': 'RI.PA', 'category': 'stocks'},
+            'Pernod': {'symbol': 'RI.PA', 'category': 'stocks'},
+            'Carrefour': {'symbol': 'CA.PA', 'category': 'stocks'},
+            'Crédit Agricole': {'symbol': 'ACA.PA', 'category': 'stocks'},
+            'Credit Agricole': {'symbol': 'ACA.PA', 'category': 'stocks'},
+            'Renault': {'symbol': 'RNO.PA', 'category': 'stocks'},
+            'Stellantis': {'symbol': 'STLA.PA', 'category': 'stocks'},
+            'Peugeot': {'symbol': 'STLA.PA', 'category': 'stocks'},
+            'Citroën': {'symbol': 'STLA.PA', 'category': 'stocks'},
+            'Citroen': {'symbol': 'STLA.PA', 'category': 'stocks'},
+            'Thales': {'symbol': 'HO.PA', 'category': 'stocks'},
+            'Safran': {'symbol': 'SAF.PA', 'category': 'stocks'},
+            'Veolia': {'symbol': 'VIE.PA', 'category': 'stocks'},
+            'Suez': {'symbol': 'SEV.PA', 'category': 'stocks'},
+            'ArcelorMittal': {'symbol': 'MT.PA', 'category': 'stocks'},
+            'Arcelor Mittal': {'symbol': 'MT.PA', 'category': 'stocks'},
+            'Essilor': {'symbol': 'EL.PA', 'category': 'stocks'},
+            'EssilorLuxottica': {'symbol': 'EL.PA', 'category': 'stocks'},
+            'Luxottica': {'symbol': 'EL.PA', 'category': 'stocks'},
             
             # ETFs
             'S&P 500': {'symbol': 'SPY', 'category': 'etfs'},
@@ -431,9 +555,14 @@ class DataFetcher:
             crypto_name_mappings = self._get_crypto_name_mappings()
             query_lower = query.lower()
             
-            # Search by name in mappings
+            # Search by name in mappings with improved matching
             for name, crypto_info in crypto_name_mappings.items():
-                if query_lower in name.lower():
+                name_lower = name.lower()
+                # Check for exact word matches or partial matches
+                if (query_lower in name_lower or 
+                    any(word in name_lower for word in query_lower.split()) or
+                    any(word in query_lower for word in name_lower.split())):
+                    
                     # Try to get current price for validation
                     try:
                         price_url = f"https://api.coingecko.com/api/v3/simple/price"
@@ -450,13 +579,25 @@ class DataFetcher:
                             price_data = price_response.json()
                             current_price = price_data.get(crypto_info['id'], {}).get('usd')
                             
+                            # Calculate relevance score
+                            relevance_score = 0
+                            if query_lower == name_lower:
+                                relevance_score = 100  # Exact match
+                            elif name_lower.startswith(query_lower):
+                                relevance_score = 90   # Starts with query
+                            elif query_lower in name_lower:
+                                relevance_score = 80   # Contains query
+                            else:
+                                relevance_score = 70   # Word match
+                            
                             results.append({
                                 'symbol': crypto_info['symbol'].upper(),
                                 'name': name,
                                 'source': 'coingecko',
                                 'category': 'crypto',
                                 'coingecko_id': crypto_info['id'],
-                                'price': current_price
+                                'price': current_price,
+                                'relevance': relevance_score
                             })
                     except:
                         continue
@@ -477,13 +618,25 @@ class DataFetcher:
             for coin in data.get('coins', [])[:10]:  # Limit to 10 results
                 # Check if we already have this coin
                 if not any(r['symbol'] == coin['symbol'].upper() for r in results):
+                    # Calculate relevance for API search results
+                    api_relevance = 30  # Lower than direct mappings
+                    if query.lower() == coin['name'].lower():
+                        api_relevance = 60
+                    elif coin['name'].lower().startswith(query.lower()):
+                        api_relevance = 55
+                    elif query.lower() == coin['symbol'].lower():
+                        api_relevance = 50
+                    elif coin['symbol'].lower().startswith(query.lower()):
+                        api_relevance = 45
+                    
                     results.append({
                         'symbol': coin['symbol'].upper(),
                         'name': coin['name'],
                         'source': 'coingecko',
                         'category': 'crypto',
                         'coingecko_id': coin['id'],
-                        'market_cap_rank': coin.get('market_cap_rank')
+                        'market_cap_rank': coin.get('market_cap_rank'),
+                        'relevance': api_relevance
                     })
             
         except Exception as e:

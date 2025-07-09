@@ -1,11 +1,23 @@
 /* Import Google Fonts */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.cdnfonts.com/css/glacial-indifference-2');
 
 /* Reset and Base Styles */
 * {
     margin: 0;
     padding: 0;
     box-sizing: border-box;
+    font-family: 'Glacial Indifference', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+/* Classe spécifique pour les emojis */
+.emoji {
+    font-family: Arial, sans-serif;
+}
+
+/* Sélecteur pour les caractères emoji Unicode */
+*:where([class*="emoji"], [title*="emoji"], [aria-label*="emoji"]) {
+    font-family: Arial, sans-serif;
 }
 
 :root {
@@ -51,7 +63,7 @@
 }
 
 body {
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-family: 'Glacial Indifference', -apple-system, BlinkMacSystemFont, sans-serif;
     background: var(--bg-0);
     color: var(--text-primary);
     line-height: 1.6;
@@ -207,7 +219,7 @@ header .subtitle {
     border-radius: 12px;
     font-size: 15px;
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-    font-family: 'Inter', sans-serif;
+    font-family: 'Glacial Indifference', -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
 .form-control:hover {
@@ -403,7 +415,7 @@ header .subtitle {
 .asset-item .symbol {
     font-weight: 700;
     font-size: 18px;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: 'Glacial Indifference', -apple-system, BlinkMacSystemFont, sans-serif;
     letter-spacing: 0.5px;
 }
 
@@ -570,12 +582,21 @@ header .subtitle {
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: 'Glacial Indifference', -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
 .metric-description {
     font-size: 0.875rem;
     color: var(--text-tertiary);
+}
+
+/* Réduction de police pour la metric-card du milieu (Période analysée) */
+.metrics-grid .metric-card:nth-child(2) h3 {
+    font-size: 0.75rem;
+}
+
+.metrics-grid .metric-card:nth-child(2) .metric-value {
+    font-size: 2rem;
 }
 
 /* Correlation Pairs */
@@ -624,7 +645,7 @@ header .subtitle {
 
 .pair-assets {
     font-weight: 500;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: 'Glacial Indifference', -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
 .pair-correlation {
@@ -632,7 +653,7 @@ header .subtitle {
     padding: 6px 16px;
     border-radius: 50px;
     font-size: 14px;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: 'Glacial Indifference', -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
 .pair-correlation.positive {
@@ -688,7 +709,7 @@ header .subtitle {
 }
 
 .stats-table td {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: 'Glacial Indifference', -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
 .positive {
@@ -844,7 +865,7 @@ footer p {
 .search-result-symbol {
     font-weight: 700;
     font-size: 16px;
-    font-family: 'JetBrains Mono', monospace;
+    font-family: 'Glacial Indifference', -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
 .search-result-name {
@@ -872,7 +893,7 @@ footer p {
 .search-result-price {
     font-weight: 600;
     color: var(--secondary);
-    font-family: 'JetBrains Mono', monospace;
+    font-family: 'Glacial Indifference', -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
 /* Toast Notifications */
