@@ -1,10 +1,35 @@
 // API Module for handling backend communication
 const API = {
-    // Base URL for API endpoints - Auto-detect based on current location
+    // Base URL for API endpoints - Auto-detect based on environment
     baseURL: (() => {
-        // Pour le développement, on utilise le port 5000
-        const host = window.location.hostname || 'localhost';
-        return `http://${host}:5000/api`;
+        // Check for custom API URL (for production deployments)
+        // You can set this in a config.js file or as a global variable
+        if (window.API_BASE_URL) {
+            return window.API_BASE_URL;
+        }
+
+        const hostname = window.location.hostname;
+
+        // Production detection - common deployment platforms
+        const isProduction = (
+            hostname !== 'localhost' &&
+            hostname !== '127.0.0.1' &&
+            !hostname.includes('192.168.') &&
+            !hostname.includes('10.0.')
+        );
+
+        if (isProduction) {
+            // In production, the backend should be deployed separately
+            // Options:
+            // 1. Same domain with /api prefix (if using reverse proxy)
+            // 2. Separate backend URL (configure via window.API_BASE_URL)
+
+            // Try same origin first (useful if backend is proxied)
+            return `${window.location.origin}/api`;
+        }
+
+        // Development mode - use localhost with Flask port
+        return 'http://localhost:5000/api';
     })(),
 
     // Request timeout in milliseconds
