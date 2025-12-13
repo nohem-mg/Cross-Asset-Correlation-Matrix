@@ -4,10 +4,18 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 import json
+import logging
 
 from config import Config
 from data_fetcher import DataFetcher
 from correlation_calc import CorrelationCalculator
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -16,6 +24,18 @@ CORS(app, origins=Config.CORS_ORIGINS)
 # Initialize components
 data_fetcher = DataFetcher()
 calc = CorrelationCalculator()
+
+@app.before_request
+def log_request_info():
+    """Log incoming requests for debugging"""
+    if request.endpoint != 'health_check':
+        logger.debug(f"Request: {request.method} {request.path}")
+
+@app.errorhandler(Exception)
+def handle_exception(e):
+    """Global error handler"""
+    logger.error(f"Unhandled exception: {str(e)}", exc_info=True)
+    return jsonify({'error': 'Une erreur interne est survenue'}), 500
 
 @app.route('/api/health', methods=['GET'])
 def health_check():
@@ -51,48 +71,72 @@ def calculate_correlation():
     """Calculate correlation matrix for selected assets"""
     try:
         data = request.get_json()
-        
+
         # Validate input
         if not data or 'assets' not in data or 'period' not in data:
-            return jsonify({'error': 'Missing required parameters'}), 400
-        
+            return jsonify({'error': 'Paramètres requis manquants (assets, period)'}), 400
+
         assets = data['assets']
         period = data['period']
         correlation_method = data.get('correlation_method', 'pearson')
         returns_method = data.get('returns_method', 'log')
-        
+
+        # Validate that at least some assets are selected
+        total_assets = sum(len(v) for v in assets.values() if isinstance(v, list))
+        if total_assets < 2:
+            return jsonify({'error': 'Veuillez sélectionner au moins 2 actifs'}), 400
+
         # Validate period
         if period not in Config.TIME_PERIODS:
-            return jsonify({'error': 'Invalid time period'}), 400
-        
+            return jsonify({'error': f'Période invalide. Choix: {list(Config.TIME_PERIODS.keys())}'}), 400
+
+        logger.info(f"Calculating correlation for {total_assets} assets over {period}")
+
         # Fetch data
         prices_df = data_fetcher.fetch_mixed_assets(assets, period)
-        
+
         if prices_df.empty:
-            return jsonify({'error': 'No data available for selected assets'}), 404
-        
+            return jsonify({
+                'error': 'Aucune donnée disponible pour les actifs sélectionnés. '
+                         'Vérifiez que les symboles sont corrects et réessayez.'
+            }), 404
+
+        if len(prices_df.columns) < 2:
+            return jsonify({
+                'error': f'Données insuffisantes. Seulement {len(prices_df.columns)} actif(s) avec des données.'
+            }), 400
+
         # Calculate returns
         returns_df = calc.calculate_returns(prices_df, method=returns_method)
-        
+
+        if returns_df.empty or len(returns_df) < 5:
+            return jsonify({
+                'error': f'Données insuffisantes pour calculer les corrélations. '
+                         f'Seulement {len(returns_df)} points de données disponibles.'
+            }), 400
+
         # Calculate correlation matrix
         corr_matrix = calc.calculate_correlation_matrix(returns_df, method=correlation_method)
-        
+
+        if corr_matrix.empty:
+            return jsonify({'error': 'Impossible de calculer la matrice de corrélation'}), 500
+
         # Calculate additional metrics
         diversification_score = calc.calculate_diversification_score(corr_matrix)
         statistics = calc.calculate_statistics(returns_df)
-        
+
         # Find highly correlated pairs
         positive_pairs = calc.find_correlated_pairs(corr_matrix, threshold=0.7, correlation_type='positive')
         negative_pairs = calc.find_correlated_pairs(corr_matrix, threshold=0.7, correlation_type='negative')
-        
+
         # Calculate beta if SPY is included
         betas = {}
         if 'SPY' in returns_df.columns:
             betas = calc.calculate_beta(returns_df, 'SPY')
-        
+
         # Calculate performance comparison
         performance_comparison = calc.calculate_performance_comparison(prices_df)
-        
+
         # Create mapping of technical symbols to names
         asset_names = {}
         for technical_symbol in corr_matrix.columns:
@@ -109,17 +153,17 @@ def calculate_correlation():
                 asset_names[technical_symbol] = Config.COMMODITY_ASSETS[technical_symbol]
             else:
                 asset_names[technical_symbol] = technical_symbol  # fallback
-        
+
         # Prepare response
         response = {
             'correlation_matrix': corr_matrix.to_dict(),
             'assets': corr_matrix.columns.tolist(),
-            'asset_names': asset_names,  # Ajout du mapping symbole -> nom
+            'asset_names': asset_names,
             'diversification_score': diversification_score,
             'statistics': statistics,
-            'performance_comparison': performance_comparison,  # Ajout des performances
+            'performance_comparison': performance_comparison,
             'highly_correlated': {
-                'positive': positive_pairs[:10],  # Top 10
+                'positive': positive_pairs[:10],
                 'negative': negative_pairs[:10]
             },
             'betas': betas,
@@ -128,12 +172,16 @@ def calculate_correlation():
             'start_date': prices_df.index[0].strftime('%Y-%m-%d'),
             'end_date': prices_df.index[-1].strftime('%Y-%m-%d')
         }
-        
+
+        logger.info(f"Correlation calculated successfully: {len(corr_matrix)} assets, {len(returns_df)} data points")
         return jsonify(response)
-        
+
+    except ValueError as e:
+        logger.warning(f"Validation error: {str(e)}")
+        return jsonify({'error': str(e)}), 400
     except Exception as e:
-        app.logger.error(f"Error calculating correlation: {str(e)}")
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Error calculating correlation: {str(e)}", exc_info=True)
+        return jsonify({'error': f'Erreur lors du calcul: {str(e)}'}), 500
 
 @app.route('/api/prices', methods=['POST'])
 def get_latest_prices():

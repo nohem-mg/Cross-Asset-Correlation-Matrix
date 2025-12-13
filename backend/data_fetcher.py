@@ -5,12 +5,37 @@ import requests
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 import time
+import logging
 from config import Config
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 class DataFetcher:
     def __init__(self):
         self.cache = {}
         self.cache_timestamps = {}
+        self.max_retries = 3
+        self.retry_delay = 1  # seconds
+
+    def _retry_request(self, func, *args, max_retries=None, **kwargs):
+        """Generic retry wrapper for API calls"""
+        retries = max_retries or self.max_retries
+        last_exception = None
+
+        for attempt in range(retries):
+            try:
+                return func(*args, **kwargs)
+            except Exception as e:
+                last_exception = e
+                if attempt < retries - 1:
+                    wait_time = self.retry_delay * (2 ** attempt)  # Exponential backoff
+                    logger.warning(f"Attempt {attempt + 1} failed: {e}. Retrying in {wait_time}s...")
+                    time.sleep(wait_time)
+
+        logger.error(f"All {retries} attempts failed: {last_exception}")
+        raise last_exception
         
     def _is_cache_valid(self, key: str) -> bool:
         """Check if cached data is still valid"""
@@ -18,13 +43,56 @@ class DataFetcher:
             return False
         return (time.time() - self.cache_timestamps[key]) < Config.CACHE_DURATION
     
+    def _fetch_single_crypto(self, symbol: str, crypto_id: str, days: int) -> Optional[pd.Series]:
+        """Fetch data for a single cryptocurrency with retry logic"""
+        url = f"https://api.coingecko.com/api/v3/coins/{crypto_id}/market_chart"
+        params = {
+            'vs_currency': 'usd',
+            'days': days,
+            'interval': 'daily'
+        }
+
+        if Config.COINGECKO_API_KEY:
+            params['x_cg_pro_api_key'] = Config.COINGECKO_API_KEY
+
+        def make_request():
+            response = requests.get(url, params=params, timeout=30)
+            response.raise_for_status()
+            return response.json()
+
+        try:
+            data = self._retry_request(make_request)
+            prices = data.get('prices', [])
+
+            if not prices:
+                logger.warning(f"No price data returned for {symbol}")
+                return None
+
+            # Convert to DataFrame
+            df = pd.DataFrame(prices, columns=['timestamp', symbol])
+            df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+            df.set_index('timestamp', inplace=True)
+
+            # Remove timezone info to match stock data
+            df.index = df.index.tz_localize(None)
+
+            # Normalize to daily data (end of day)
+            df = df.resample('D').last()
+
+            return df[symbol]
+
+        except Exception as e:
+            logger.error(f"Error fetching crypto data for {symbol} ({crypto_id}): {e}")
+            return None
+
     def fetch_crypto_data(self, symbols: List[str], period: str) -> pd.DataFrame:
         """Fetch cryptocurrency data from CoinGecko API"""
-        cache_key = f"crypto_{'-'.join(symbols)}_{period}"
-        
+        cache_key = f"crypto_{'-'.join(sorted(symbols))}_{period}"
+
         if self._is_cache_valid(cache_key):
+            logger.debug(f"Using cached data for {cache_key}")
             return self.cache[cache_key]
-        
+
         # Convert symbols to CoinGecko IDs
         crypto_ids = []
         for symbol in symbols:
@@ -35,7 +103,7 @@ class DataFetcher:
                 # For custom assets, try to find the CoinGecko ID
                 crypto_id = self._get_coingecko_id_for_symbol(symbol)
                 crypto_ids.append(crypto_id if crypto_id else symbol.lower())
-        
+
         # Calculate date range
         end_date = datetime.now()
         if period == 'ytd':
@@ -43,56 +111,32 @@ class DataFetcher:
             days = (end_date - start_date).days
         else:
             days = Config.TIME_PERIODS[period]['days']
-            start_date = end_date - timedelta(days=days)
-        
+
         # Prepare data
         data_dict = {}
-        
+        failed_symbols = []
+
         for symbol, crypto_id in zip(symbols, crypto_ids):
-            try:
-                # CoinGecko API endpoint
-                url = f"https://api.coingecko.com/api/v3/coins/{crypto_id}/market_chart"
-                params = {
-                    'vs_currency': 'usd',
-                    'days': days,
-                    'interval': 'daily'
-                }
-                
-                if Config.COINGECKO_API_KEY:
-                    params['x_cg_pro_api_key'] = Config.COINGECKO_API_KEY
-                
-                response = requests.get(url, params=params)
-                response.raise_for_status()
-                
-                data = response.json()
-                prices = data['prices']
-                
-                # Convert to DataFrame
-                df = pd.DataFrame(prices, columns=['timestamp', symbol])
-                df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
-                df.set_index('timestamp', inplace=True)
-                
-                # Remove timezone info to match stock data
-                df.index = df.index.tz_localize(None)
-                
-                # Normalize to daily data (end of day)
-                df = df.resample('D').last()
-                
-                data_dict[symbol] = df[symbol]
-                
-                # Rate limiting
-                time.sleep(0.1)
-                
-            except Exception as e:
-                print(f"Error fetching crypto data for {symbol}: {e}")
-                continue
-        
+            series = self._fetch_single_crypto(symbol, crypto_id, days)
+            if series is not None:
+                data_dict[symbol] = series
+            else:
+                failed_symbols.append(symbol)
+
+            # Rate limiting for CoinGecko free API
+            time.sleep(0.25)
+
+        if failed_symbols:
+            logger.warning(f"Failed to fetch data for: {failed_symbols}")
+
         if data_dict:
             result = pd.DataFrame(data_dict)
+            # Clean data - remove any infinite values
+            result = result.replace([np.inf, -np.inf], np.nan)
             self.cache[cache_key] = result
             self.cache_timestamps[cache_key] = time.time()
             return result
-        
+
         return pd.DataFrame()
     
     def _get_coingecko_id_for_symbol(self, symbol: str) -> Optional[str]:
@@ -123,11 +167,12 @@ class DataFetcher:
     
     def fetch_stock_data(self, symbols: List[str], period: str) -> pd.DataFrame:
         """Fetch stock/ETF/commodity data from Yahoo Finance"""
-        cache_key = f"stock_{'-'.join(symbols)}_{period}"
-        
+        cache_key = f"stock_{'-'.join(sorted(symbols))}_{period}"
+
         if self._is_cache_valid(cache_key):
+            logger.debug(f"Using cached data for {cache_key}")
             return self.cache[cache_key]
-        
+
         # Calculate date range
         end_date = datetime.now()
         if period == 'ytd':
@@ -135,17 +180,16 @@ class DataFetcher:
         else:
             days = Config.TIME_PERIODS[period]['days']
             start_date = end_date - timedelta(days=days)
-        
-        try:
-            # Handle single vs multiple symbols differently
+
+        def fetch_data():
+            """Inner function for retry logic"""
             if len(symbols) == 1:
                 # For single symbol, use Ticker object
                 ticker = yf.Ticker(symbols[0])
                 hist = ticker.history(start=start_date, end=end_date, auto_adjust=True)
                 if hist.empty:
-                    print(f"No data returned for {symbols[0]}")
-                    return pd.DataFrame()
-                result = pd.DataFrame({symbols[0]: hist['Close']})
+                    raise ValueError(f"No data returned for {symbols[0]}")
+                return pd.DataFrame({symbols[0]: hist['Close']})
             else:
                 # For multiple symbols, use download
                 data = yf.download(
@@ -154,98 +198,130 @@ class DataFetcher:
                     end=end_date,
                     progress=False,
                     auto_adjust=True,
-                    group_by='ticker'
+                    group_by='ticker',
+                    threads=True
                 )
-                
+
                 if data.empty:
-                    print("No data returned from Yahoo Finance")
-                    return pd.DataFrame()
-                
-                # Extract Close prices
-                if len(symbols) > 1:
+                    raise ValueError("No data returned from Yahoo Finance")
+
+                # Extract Close prices - handle different column structures
+                if isinstance(data.columns, pd.MultiIndex):
+                    # Multi-level columns
                     if 'Close' in data.columns.get_level_values(1):
-                        # Multi-level columns (ticker, metric)
                         result = data.xs('Close', axis=1, level=1)
                     else:
-                        # Single level columns
-                        result = data['Close']
+                        # Try getting Close from first level
+                        result = data['Close'] if 'Close' in data.columns else data
                 else:
-                    result = pd.DataFrame({symbols[0]: data['Close']})
-            
+                    # Single level columns
+                    result = data[['Close']] if 'Close' in data.columns else data
+                    if 'Close' in data.columns:
+                        result = pd.DataFrame({symbols[0]: data['Close']})
+
+                return result
+
+        try:
+            result = self._retry_request(fetch_data, max_retries=2)
+
             # Ensure index is datetime without timezone
             result.index = pd.to_datetime(result.index)
             if result.index.tz is not None:
                 result.index = result.index.tz_localize(None)
-            
+
+            # Clean data - remove any infinite values
+            result = result.replace([np.inf, -np.inf], np.nan)
+
+            # Log any missing symbols
+            missing = set(symbols) - set(result.columns)
+            if missing:
+                logger.warning(f"No data found for symbols: {missing}")
+
             self.cache[cache_key] = result
             self.cache_timestamps[cache_key] = time.time()
-            
+
             return result
-            
+
         except Exception as e:
-            print(f"Error fetching stock data: {e}")
-            print(f"Symbols: {symbols}")
-            import traceback
-            traceback.print_exc()
+            logger.error(f"Error fetching stock data: {e}")
+            logger.error(f"Symbols: {symbols}")
             return pd.DataFrame()
     
     def fetch_mixed_assets(self, assets: Dict[str, List[str]], period: str) -> pd.DataFrame:
-        """Fetch data for mixed asset types with better alignment"""
+        """Fetch data for mixed asset types with improved alignment strategy"""
         all_data = []
-        
-        # Debug print
-        print(f"Fetching mixed assets: {assets}")
-        
+        has_crypto = False
+        has_stocks = False
+
+        logger.info(f"Fetching mixed assets: {assets}")
+
         # Fetch crypto data
         if 'crypto' in assets and assets['crypto']:
             crypto_data = self.fetch_crypto_data(assets['crypto'], period)
             if not crypto_data.empty:
-                print(f"Crypto data shape: {crypto_data.shape}")
+                logger.info(f"Crypto data shape: {crypto_data.shape}")
                 all_data.append(crypto_data)
-        
+                has_crypto = True
+
         # Fetch stock data (including ETFs and commodities)
         stock_symbols = []
         for asset_type in ['stocks', 'etfs', 'commodities']:
             if asset_type in assets and assets[asset_type]:
                 stock_symbols.extend(assets[asset_type])
-        
+
         if stock_symbols:
             stock_data = self.fetch_stock_data(stock_symbols, period)
             if not stock_data.empty:
-                print(f"Stock data shape: {stock_data.shape}")
+                logger.info(f"Stock data shape: {stock_data.shape}")
                 all_data.append(stock_data)
-        
-        # Combine all data with better alignment
-        if all_data:
-            # Use outer join to keep all data
-            combined = pd.concat(all_data, axis=1, join='outer')
-            
-            # Sort by index to ensure chronological order
-            combined = combined.sort_index()
-            
-            # Forward fill first (to handle weekends/holidays)
-            combined = combined.ffill()
-            
-            # Then backward fill for any remaining NaN at the beginning
-            combined = combined.bfill()
-            
-            # Drop any rows where all values are still NaN
-            combined = combined.dropna(how='all')
-            
-            # Drop any rows with any NaN (to ensure correlation calculation works)
+                has_stocks = True
+
+        if not all_data:
+            logger.warning("No data fetched for any assets")
+            return pd.DataFrame()
+
+        # Combine all data with improved alignment
+        combined = pd.concat(all_data, axis=1, join='outer')
+        combined = combined.sort_index()
+
+        # When mixing crypto (24/7) with stocks (weekdays only),
+        # we need to be smarter about filling
+        if has_crypto and has_stocks:
+            # Only keep trading days (weekdays) for a cleaner correlation
+            # This avoids artificial zero returns on weekends for stocks
+            combined = combined[combined.index.dayofweek < 5]  # Monday=0, Friday=4
+            logger.info(f"Filtered to trading days only: {combined.shape}")
+
+        # Forward fill to handle missing values (holidays, etc.)
+        # Limit to 3 days to avoid carrying stale data too long
+        combined = combined.ffill(limit=3)
+
+        # Then backward fill for any remaining NaN at the beginning
+        combined = combined.bfill(limit=3)
+
+        # Drop rows where any value is still NaN (ensures clean data for correlation)
+        initial_len = len(combined)
+        combined = combined.dropna()
+
+        if len(combined) < initial_len:
+            logger.info(f"Dropped {initial_len - len(combined)} rows with missing data")
+
+        # Validate data quality
+        if len(combined) < 5:
+            logger.warning(f"Only {len(combined)} data points after alignment - may be insufficient")
+
+        # Final validation - check for any remaining issues
+        if combined.isnull().any().any():
+            logger.warning("Some NaN values remain after cleaning")
             combined = combined.dropna()
-            
-            # Debug print
-            print(f"Combined data shape after cleaning: {combined.shape}")
-            print(f"Columns in combined data: {combined.columns.tolist()}")
-            
-            # Ensure we have enough data points
-            if len(combined) < 10:
-                print(f"Warning: Only {len(combined)} data points after alignment")
-            
-            return combined
-        
-        return pd.DataFrame()
+
+        # Remove any infinite values
+        combined = combined.replace([np.inf, -np.inf], np.nan).dropna()
+
+        logger.info(f"Combined data shape after cleaning: {combined.shape}")
+        logger.debug(f"Columns in combined data: {combined.columns.tolist()}")
+
+        return combined
     
     def get_latest_prices(self, assets: Dict[str, List[str]]) -> Dict[str, float]:
         """Get latest prices for all assets"""

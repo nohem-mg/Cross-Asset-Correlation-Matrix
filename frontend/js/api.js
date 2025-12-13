@@ -6,27 +6,66 @@ const API = {
         const host = window.location.hostname || 'localhost';
         return `http://${host}:5000/api`;
     })(),
-    
-    // Helper function for making API requests
-    async request(endpoint, options = {}) {
+
+    // Request timeout in milliseconds
+    timeout: 60000,
+
+    // Retry configuration
+    maxRetries: 2,
+    retryDelay: 1000,
+
+    // Helper function for making API requests with retry logic
+    async request(endpoint, options = {}, retryCount = 0) {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+
         try {
             console.log(`Making request to: ${this.baseURL}${endpoint}`);
-            
+
             const response = await fetch(`${this.baseURL}${endpoint}`, {
                 headers: {
                     'Content-Type': 'application/json',
                     ...options.headers
                 },
+                signal: controller.signal,
                 ...options
             });
-            
+
+            clearTimeout(timeoutId);
+
             if (!response.ok) {
-                const error = await response.json();
-                throw new Error(error.error || `HTTP error! status: ${response.status}`);
+                let errorMessage;
+                try {
+                    const error = await response.json();
+                    errorMessage = error.error || `Erreur HTTP ${response.status}`;
+                } catch {
+                    errorMessage = `Erreur HTTP ${response.status}`;
+                }
+                throw new Error(errorMessage);
             }
-            
+
             return await response.json();
+
         } catch (error) {
+            clearTimeout(timeoutId);
+
+            // Handle abort/timeout
+            if (error.name === 'AbortError') {
+                throw new Error('La requête a expiré. Le serveur met trop de temps à répondre.');
+            }
+
+            // Handle network errors with retry
+            if (error.message === 'Failed to fetch' && retryCount < this.maxRetries) {
+                console.warn(`Request failed, retrying (${retryCount + 1}/${this.maxRetries})...`);
+                await new Promise(resolve => setTimeout(resolve, this.retryDelay * (retryCount + 1)));
+                return this.request(endpoint, options, retryCount + 1);
+            }
+
+            // Handle connection refused
+            if (error.message === 'Failed to fetch') {
+                throw new Error('Impossible de se connecter au serveur. Vérifiez que le backend est démarré.');
+            }
+
             console.error('API request failed:', error);
             throw error;
         }
