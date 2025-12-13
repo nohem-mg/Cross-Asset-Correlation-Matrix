@@ -263,16 +263,26 @@ const App = {
     async calculateCorrelation() {
         const period = document.getElementById('period-select').value;
         const correlationMethod = 'pearson'; // Always use Pearson correlation
-        
+
         // Check if enough assets selected
         const totalAssets = Object.values(this.state.selectedAssets).flat().length;
         if (totalAssets < 2) {
             this.showError('Veuillez sélectionner au moins 2 actifs');
             return;
         }
-        
-        this.showLoading(true);
-        
+
+        // Get period label for better UX
+        const periodLabels = {
+            '7d': '7 jours',
+            '30d': '30 jours',
+            '90d': '90 jours',
+            '180d': '6 mois',
+            '1y': '1 an',
+            'ytd': "depuis le début de l'année"
+        };
+
+        this.showLoading(true, `Récupération des données pour ${totalAssets} actifs sur ${periodLabels[period] || period}...`);
+
         try {
             // Calculate correlation
             const data = await API.calculateCorrelation(
@@ -280,12 +290,12 @@ const App = {
                 period,
                 correlationMethod
             );
-            
+
             this.state.currentData = data;
-            
+
             // Show results section
             document.getElementById('results-section').style.display = 'block';
-            
+
             // Update visualizations
             ChartModule.createCorrelationHeatmap(data.correlation_matrix, data.assets, data.asset_names);
             ChartModule.updateMetrics(data);
@@ -295,21 +305,25 @@ const App = {
                 data.asset_names
             );
             ChartModule.createStatisticsTable(data.statistics, data.betas, data.asset_names);
-            
+
             // Create performance comparison
             ChartModule.createPerformanceComparison(data.performance_comparison, data.asset_names, period);
-            
 
-            
             // Enable export button
             document.getElementById('export-btn').disabled = false;
-            
+
+            // Show success message
+            this.showSuccess(
+                `Analyse de ${data.assets.length} actifs sur ${data.data_points} jours complétée`,
+                'Calcul terminé'
+            );
+
             // Scroll to results
             document.getElementById('results-section').scrollIntoView({ behavior: 'smooth' });
-            
+
         } catch (error) {
-            this.showError(`Erreur lors du calcul: ${error.message}`);
-            console.error(error);
+            this.showError(error.message || 'Erreur lors du calcul');
+            console.error('Correlation calculation error:', error);
         } finally {
             this.showLoading(false);
         }
@@ -342,10 +356,23 @@ const App = {
         }
     },
     
-    // Show/hide loading spinner
-    showLoading(show) {
-        document.getElementById('loading').style.display = show ? 'block' : 'none';
+    // Show/hide loading spinner with optional message
+    showLoading(show, message = 'Chargement des données...') {
+        const loadingDiv = document.getElementById('loading');
+        const loadingText = loadingDiv.querySelector('p');
+
+        if (loadingText) {
+            loadingText.textContent = message;
+        }
+
+        loadingDiv.style.display = show ? 'block' : 'none';
         this.state.loading = show;
+
+        // Disable calculate button while loading
+        const calcBtn = document.getElementById('calculate-btn');
+        if (calcBtn) {
+            calcBtn.disabled = show;
+        }
     },
     
     // Show toast notification

@@ -2,36 +2,70 @@ import pandas as pd
 import numpy as np
 from typing import Dict, List, Tuple, Optional
 from scipy import stats as scipy_stats  # Renommé pour éviter le conflit
+import logging
+
+logger = logging.getLogger(__name__)
 
 class CorrelationCalculator:
-    
+
     @staticmethod
     def calculate_returns(prices_df: pd.DataFrame, method: str = 'log') -> pd.DataFrame:
-        """Calculate returns from price data"""
+        """Calculate returns from price data with validation"""
+        if prices_df.empty:
+            logger.warning("Empty price dataframe provided")
+            return pd.DataFrame()
+
+        # Check for zero or negative prices which would break log returns
         if method == 'log':
-            # Log returns
+            if (prices_df <= 0).any().any():
+                logger.warning("Found zero or negative prices, using simple returns instead")
+                method = 'simple'
+
+        if method == 'log':
+            # Log returns - more suitable for financial analysis
             returns = np.log(prices_df / prices_df.shift(1))
         else:
             # Simple returns
             returns = prices_df.pct_change()
-        
-        # Remove first row (NaN)
+
+        # Remove first row (NaN) and any remaining NaN/inf values
         returns = returns.dropna()
+        returns = returns.replace([np.inf, -np.inf], np.nan).dropna()
+
+        if returns.empty:
+            logger.warning("No valid returns calculated")
+
         return returns
     
     @staticmethod
     def calculate_correlation_matrix(returns_df: pd.DataFrame, method: str = 'pearson') -> pd.DataFrame:
-        """Calculate correlation matrix"""
-        if method == 'pearson':
-            corr_matrix = returns_df.corr(method='pearson')
-        elif method == 'spearman':
-            corr_matrix = returns_df.corr(method='spearman')
-        elif method == 'kendall':
-            corr_matrix = returns_df.corr(method='kendall')
-        else:
-            raise ValueError(f"Unknown correlation method: {method}")
-        
-        return corr_matrix
+        """Calculate correlation matrix with validation"""
+        if returns_df.empty:
+            logger.warning("Empty returns dataframe provided")
+            return pd.DataFrame()
+
+        if len(returns_df) < 5:
+            logger.warning(f"Only {len(returns_df)} data points - correlation may be unreliable")
+
+        valid_methods = ['pearson', 'spearman', 'kendall']
+        if method not in valid_methods:
+            logger.warning(f"Unknown method {method}, using pearson")
+            method = 'pearson'
+
+        try:
+            corr_matrix = returns_df.corr(method=method)
+
+            # Validate the correlation matrix
+            if corr_matrix.isnull().any().any():
+                logger.warning("Correlation matrix contains NaN values")
+                # Fill NaN with 0 (no correlation) for assets with insufficient data
+                corr_matrix = corr_matrix.fillna(0)
+
+            return corr_matrix
+
+        except Exception as e:
+            logger.error(f"Error calculating correlation matrix: {e}")
+            return pd.DataFrame()
     
 
     
@@ -96,25 +130,77 @@ class CorrelationCalculator:
     
     @staticmethod
     def calculate_statistics(returns_df: pd.DataFrame) -> Dict:
-        """Calculate various statistics for each asset"""
-        statistics = {}  # Renommé pour éviter le conflit avec scipy.stats
-        
+        """Calculate various statistics for each asset with error handling"""
+        statistics = {}
+
+        if returns_df.empty:
+            logger.warning("Empty returns dataframe for statistics calculation")
+            return statistics
+
         for asset in returns_df.columns:
             asset_returns = returns_df[asset].dropna()
-            
-            statistics[asset] = {
-                'mean_return': float(asset_returns.mean()),
-                'volatility': float(asset_returns.std()),
-                'sharpe_ratio': float(asset_returns.mean() / asset_returns.std() * np.sqrt(252)) if asset_returns.std() > 0 else 0,
-                'skewness': float(scipy_stats.skew(asset_returns)),  # Utilise scipy_stats
-                'kurtosis': float(scipy_stats.kurtosis(asset_returns)),  # Utilise scipy_stats
-                'max_return': float(asset_returns.max()),
-                'min_return': float(asset_returns.min()),
-                'positive_days': int((asset_returns > 0).sum()),
-                'negative_days': int((asset_returns < 0).sum()),
-                'total_days': len(asset_returns)
-            }
-        
+
+            if len(asset_returns) < 2:
+                logger.warning(f"Insufficient data for {asset} statistics")
+                statistics[asset] = {
+                    'mean_return': 0.0,
+                    'volatility': 0.0,
+                    'sharpe_ratio': 0.0,
+                    'skewness': 0.0,
+                    'kurtosis': 0.0,
+                    'max_return': 0.0,
+                    'min_return': 0.0,
+                    'positive_days': 0,
+                    'negative_days': 0,
+                    'total_days': len(asset_returns)
+                }
+                continue
+
+            try:
+                mean_return = float(asset_returns.mean())
+                volatility = float(asset_returns.std())
+
+                # Annualized Sharpe ratio (assuming daily returns)
+                sharpe_ratio = 0.0
+                if volatility > 0:
+                    sharpe_ratio = float(mean_return / volatility * np.sqrt(252))
+
+                # Handle potential issues with skewness and kurtosis
+                try:
+                    skewness = float(scipy_stats.skew(asset_returns))
+                    kurtosis = float(scipy_stats.kurtosis(asset_returns))
+                except Exception:
+                    skewness = 0.0
+                    kurtosis = 0.0
+
+                statistics[asset] = {
+                    'mean_return': mean_return,
+                    'volatility': volatility,
+                    'sharpe_ratio': sharpe_ratio,
+                    'skewness': skewness,
+                    'kurtosis': kurtosis,
+                    'max_return': float(asset_returns.max()),
+                    'min_return': float(asset_returns.min()),
+                    'positive_days': int((asset_returns > 0).sum()),
+                    'negative_days': int((asset_returns < 0).sum()),
+                    'total_days': len(asset_returns)
+                }
+
+            except Exception as e:
+                logger.error(f"Error calculating statistics for {asset}: {e}")
+                statistics[asset] = {
+                    'mean_return': 0.0,
+                    'volatility': 0.0,
+                    'sharpe_ratio': 0.0,
+                    'skewness': 0.0,
+                    'kurtosis': 0.0,
+                    'max_return': 0.0,
+                    'min_return': 0.0,
+                    'positive_days': 0,
+                    'negative_days': 0,
+                    'total_days': 0
+                }
+
         return statistics
     
     @staticmethod
