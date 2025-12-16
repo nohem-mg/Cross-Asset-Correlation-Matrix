@@ -35,19 +35,23 @@ def log_request_info():
 def handle_404(e):
     """Handle 404 errors"""
     # Don't log 404s as errors, they're expected for unknown routes
-    if request.path.startswith('/api/'):
-        return jsonify({'error': 'Endpoint non trouvé'}), 404
-    # For non-API routes, return a simple message
-    return jsonify({'error': 'Route non trouvée'}), 404
+    # Just return a simple JSON response
+    return jsonify({
+        'error': 'Route non trouvée',
+        'path': request.path
+    }), 404
 
 @app.errorhandler(Exception)
 def handle_exception(e):
-    """Global error handler"""
-    # Don't handle 404s here, they're handled above
-    from werkzeug.exceptions import NotFound
-    if isinstance(e, NotFound):
-        raise  # Let the 404 handler deal with it
+    """Global error handler for non-HTTP exceptions"""
+    # Exclude HTTP exceptions (404, 400, etc.) - Flask handles them with specific handlers
+    from werkzeug.exceptions import HTTPException
+    if isinstance(e, HTTPException):
+        # Pass HTTP exceptions to Flask's default handling
+        # This allows specific handlers (like 404) to be called
+        return e
     
+    # Log and handle only non-HTTP exceptions
     logger.error(f"Unhandled exception: {str(e)}", exc_info=True)
     return jsonify({'error': 'Une erreur interne est survenue'}), 500
 
