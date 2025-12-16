@@ -118,14 +118,23 @@ def calculate_correlation():
             return jsonify({'error': f'Période invalide. Choix: {list(Config.TIME_PERIODS.keys())}'}), 400
 
         logger.info(f"Calculating correlation for {total_assets} assets over {period}")
+        logger.info(f"Assets received: {json.dumps(assets, indent=2)}")
 
         # Fetch data
         prices_df = data_fetcher.fetch_mixed_assets(assets, period)
 
+        logger.info(f"Fetched data shape: {prices_df.shape}")
+        logger.info(f"Fetched data columns: {prices_df.columns.tolist() if not prices_df.empty else 'No columns'}")
+
         if prices_df.empty:
+            logger.warning(f"No data fetched for assets: {assets}")
             return jsonify({
                 'error': 'Aucune donnée disponible pour les actifs sélectionnés. '
-                         'Vérifiez que les symboles sont corrects et réessayez.'
+                         'Vérifiez que les symboles sont corrects et réessayez.',
+                'debug': {
+                    'assets_received': assets,
+                    'total_assets': total_assets
+                }
             }), 404
 
         if len(prices_df.columns) < 2:
