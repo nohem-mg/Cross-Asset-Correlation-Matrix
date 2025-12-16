@@ -102,108 +102,98 @@ class DataFetcher:
             return None
 
     def fetch_crypto_data(self, symbols: List[str], period: str) -> pd.DataFrame:
-        """Fetch cryptocurrency data from CoinGecko API"""
+        """Fetch cryptocurrency data - uses yfinance first (more reliable), CoinGecko as fallback"""
         cache_key = f"crypto_{'-'.join(sorted(symbols))}_{period}"
 
         if self._is_cache_valid(cache_key):
             logger.debug(f"Using cached data for {cache_key}")
             return self.cache[cache_key]
 
-        # Convert symbols to CoinGecko IDs
-        crypto_ids = []
-        for symbol in symbols:
-            if symbol in Config.CRYPTO_ASSETS:
-                # Use predefined mapping
-                crypto_ids.append(Config.CRYPTO_ASSETS[symbol])
-            else:
-                # For custom assets, try to find the CoinGecko ID
-                crypto_id = self._get_coingecko_id_for_symbol(symbol)
-                crypto_ids.append(crypto_id if crypto_id else symbol.lower())
-
         # Calculate date range
         end_date = datetime.now()
         if period == 'ytd':
             start_date = datetime(end_date.year, 1, 1)
-            days = (end_date - start_date).days
         else:
             days = Config.TIME_PERIODS[period]['days']
+            start_date = end_date - timedelta(days=days)
 
-        # Prepare data
+        # Try yfinance first (more reliable, no rate limits)
+        logger.info(f"Fetching crypto data from yfinance: {symbols}")
         data_dict = {}
         failed_symbols = []
-
-        for i, (symbol, crypto_id) in enumerate(zip(symbols, crypto_ids)):
-            # Rate limiting for CoinGecko free API - increased delay
-            # Free tier: 10-50 calls/minute, so we use 2 seconds between calls
-            if i > 0:
-                time.sleep(2.0)  # Increased from 0.25 to 2 seconds
-            
-            series = self._fetch_single_crypto(symbol, crypto_id, days)
-            if series is not None:
-                data_dict[symbol] = series
-            else:
-                failed_symbols.append(symbol)
-
-        # Try to fetch failed symbols using yfinance as fallback
-        if failed_symbols:
-            logger.warning(f"Failed to fetch from CoinGecko: {failed_symbols}. Trying yfinance as fallback...")
-            yfinance_symbols = []
-            symbol_mapping = {}  # Map yfinance symbol to original symbol
-            
-            for symbol in failed_symbols:
-                # Some cryptos are available on Yahoo Finance with -USD suffix
-                yf_symbol = f"{symbol}-USD"
-                yfinance_symbols.append(yf_symbol)
-                symbol_mapping[yf_symbol] = symbol
-            
-            if yfinance_symbols:
-                try:
-                    # Calculate date range for yfinance
-                    end_date = datetime.now()
-                    if period == 'ytd':
-                        start_date = datetime(end_date.year, 1, 1)
-                    else:
-                        days = Config.TIME_PERIODS[period]['days']
-                        start_date = end_date - timedelta(days=days)
-                    
-                    # Fetch from yfinance
-                    yf_data = yf.download(
-                        yfinance_symbols,
-                        start=start_date,
-                        end=end_date,
-                        progress=False,
-                        auto_adjust=True,
-                        group_by='ticker',
-                        threads=True
-                    )
-                    
-                    if not yf_data.empty:
-                        # Extract Close prices
-                        if isinstance(yf_data.columns, pd.MultiIndex):
-                            if 'Close' in yf_data.columns.get_level_values(1):
-                                yf_result = yf_data.xs('Close', axis=1, level=1)
-                            else:
-                                yf_result = yf_data
+        yfinance_symbols = []
+        symbol_mapping = {}  # Map yfinance symbol to original symbol
+        
+        for symbol in symbols:
+            # Yahoo Finance uses format BTC-USD, ETH-USD, etc.
+            yf_symbol = f"{symbol}-USD"
+            yfinance_symbols.append(yf_symbol)
+            symbol_mapping[yf_symbol] = symbol
+        
+        if yfinance_symbols:
+            try:
+                # Fetch from yfinance
+                yf_data = yf.download(
+                    yfinance_symbols,
+                    start=start_date,
+                    end=end_date,
+                    progress=False,
+                    auto_adjust=True,
+                    group_by='ticker',
+                    threads=True
+                )
+                
+                if not yf_data.empty:
+                    # Extract Close prices
+                    if isinstance(yf_data.columns, pd.MultiIndex):
+                        if 'Close' in yf_data.columns.get_level_values(1):
+                            yf_result = yf_data.xs('Close', axis=1, level=1)
                         else:
-                            yf_result = yf_data[['Close']] if 'Close' in yf_data.columns else yf_data
-                        
-                        # Map back to original symbols
-                        recovered_symbols = []
-                        for yf_symbol, original_symbol in symbol_mapping.items():
-                            if yf_symbol in yf_result.columns:
-                                series = yf_result[yf_symbol]
-                                series.index = pd.to_datetime(series.index)
-                                if series.index.tz is not None:
-                                    series.index = series.index.tz_localize(None)
-                                series = series.resample('D').last()
-                                data_dict[original_symbol] = series
-                                recovered_symbols.append(original_symbol)
-                                logger.info(f"Successfully fetched {original_symbol} from yfinance")
-                        
-                        # Remove recovered symbols from failed list
-                        failed_symbols = [s for s in failed_symbols if s not in recovered_symbols]
-                except Exception as e:
-                    logger.warning(f"yfinance fallback failed: {e}")
+                            yf_result = yf_data
+                    else:
+                        yf_result = yf_data[['Close']] if 'Close' in yf_data.columns else yf_data
+                    
+                    # Map back to original symbols
+                    for yf_symbol, original_symbol in symbol_mapping.items():
+                        if yf_symbol in yf_result.columns:
+                            series = yf_result[yf_symbol]
+                            series.index = pd.to_datetime(series.index)
+                            if series.index.tz is not None:
+                                series.index = series.index.tz_localize(None)
+                            series = series.resample('D').last()
+                            data_dict[original_symbol] = series
+                            logger.info(f"Successfully fetched {original_symbol} from yfinance")
+                        else:
+                            failed_symbols.append(original_symbol)
+                else:
+                    failed_symbols = symbols.copy()
+            except Exception as e:
+                logger.warning(f"yfinance fetch failed: {e}")
+                failed_symbols = symbols.copy()
+
+        # Try CoinGecko as fallback for failed symbols
+        if failed_symbols:
+            logger.info(f"Trying CoinGecko fallback for: {failed_symbols}")
+            # Convert symbols to CoinGecko IDs
+            crypto_ids = []
+            for symbol in failed_symbols:
+                if symbol in Config.CRYPTO_ASSETS:
+                    crypto_ids.append(Config.CRYPTO_ASSETS[symbol])
+                else:
+                    crypto_id = self._get_coingecko_id_for_symbol(symbol)
+                    crypto_ids.append(crypto_id if crypto_id else symbol.lower())
+            
+            for i, (symbol, crypto_id) in enumerate(zip(failed_symbols, crypto_ids)):
+                # Rate limiting for CoinGecko free API
+                if i > 0:
+                    time.sleep(2.0)  # 2 seconds between calls
+                
+                days = (end_date - start_date).days if period != 'ytd' else (end_date - datetime(end_date.year, 1, 1)).days
+                series = self._fetch_single_crypto(symbol, crypto_id, days)
+                if series is not None:
+                    data_dict[symbol] = series
+                    if symbol in failed_symbols:
+                        failed_symbols.remove(symbol)
 
         if failed_symbols:
             logger.warning(f"Failed to fetch data for: {failed_symbols}")
