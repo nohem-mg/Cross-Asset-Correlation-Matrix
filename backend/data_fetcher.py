@@ -20,13 +20,29 @@ class DataFetcher:
         self.retry_delay = 1  # seconds
 
     def _retry_request(self, func, *args, max_retries=None, **kwargs):
-        """Generic retry wrapper for API calls"""
+        """Generic retry wrapper for API calls with improved rate limit handling"""
         retries = max_retries or self.max_retries
         last_exception = None
 
         for attempt in range(retries):
             try:
                 return func(*args, **kwargs)
+            except requests.exceptions.HTTPError as e:
+                # Handle rate limiting (429) with longer backoff
+                if e.response.status_code == 429:
+                    # For 429 errors, use longer exponential backoff
+                    wait_time = self.retry_delay * (2 ** attempt) * 5  # 5x longer for rate limits
+                    if attempt < retries - 1:
+                        logger.warning(f"Rate limit hit (429). Attempt {attempt + 1}/{retries}. Waiting {wait_time}s...")
+                        time.sleep(wait_time)
+                    last_exception = e
+                else:
+                    # For other HTTP errors, use normal backoff
+                    last_exception = e
+                    if attempt < retries - 1:
+                        wait_time = self.retry_delay * (2 ** attempt)
+                        logger.warning(f"Attempt {attempt + 1} failed: {e}. Retrying in {wait_time}s...")
+                        time.sleep(wait_time)
             except Exception as e:
                 last_exception = e
                 if attempt < retries - 1:
@@ -116,15 +132,78 @@ class DataFetcher:
         data_dict = {}
         failed_symbols = []
 
-        for symbol, crypto_id in zip(symbols, crypto_ids):
+        for i, (symbol, crypto_id) in enumerate(zip(symbols, crypto_ids)):
+            # Rate limiting for CoinGecko free API - increased delay
+            # Free tier: 10-50 calls/minute, so we use 2 seconds between calls
+            if i > 0:
+                time.sleep(2.0)  # Increased from 0.25 to 2 seconds
+            
             series = self._fetch_single_crypto(symbol, crypto_id, days)
             if series is not None:
                 data_dict[symbol] = series
             else:
                 failed_symbols.append(symbol)
 
-            # Rate limiting for CoinGecko free API
-            time.sleep(0.25)
+        # Try to fetch failed symbols using yfinance as fallback
+        if failed_symbols:
+            logger.warning(f"Failed to fetch from CoinGecko: {failed_symbols}. Trying yfinance as fallback...")
+            yfinance_symbols = []
+            symbol_mapping = {}  # Map yfinance symbol to original symbol
+            
+            for symbol in failed_symbols:
+                # Some cryptos are available on Yahoo Finance with -USD suffix
+                yf_symbol = f"{symbol}-USD"
+                yfinance_symbols.append(yf_symbol)
+                symbol_mapping[yf_symbol] = symbol
+            
+            if yfinance_symbols:
+                try:
+                    # Calculate date range for yfinance
+                    end_date = datetime.now()
+                    if period == 'ytd':
+                        start_date = datetime(end_date.year, 1, 1)
+                    else:
+                        days = Config.TIME_PERIODS[period]['days']
+                        start_date = end_date - timedelta(days=days)
+                    
+                    # Fetch from yfinance
+                    yf_data = yf.download(
+                        yfinance_symbols,
+                        start=start_date,
+                        end=end_date,
+                        progress=False,
+                        auto_adjust=True,
+                        group_by='ticker',
+                        threads=True
+                    )
+                    
+                    if not yf_data.empty:
+                        # Extract Close prices
+                        if isinstance(yf_data.columns, pd.MultiIndex):
+                            if 'Close' in yf_data.columns.get_level_values(1):
+                                yf_result = yf_data.xs('Close', axis=1, level=1)
+                            else:
+                                yf_result = yf_data
+                        else:
+                            yf_result = yf_data[['Close']] if 'Close' in yf_data.columns else yf_data
+                        
+                        # Map back to original symbols
+                        recovered_symbols = []
+                        for yf_symbol, original_symbol in symbol_mapping.items():
+                            if yf_symbol in yf_result.columns:
+                                series = yf_result[yf_symbol]
+                                series.index = pd.to_datetime(series.index)
+                                if series.index.tz is not None:
+                                    series.index = series.index.tz_localize(None)
+                                series = series.resample('D').last()
+                                data_dict[original_symbol] = series
+                                recovered_symbols.append(original_symbol)
+                                logger.info(f"Successfully fetched {original_symbol} from yfinance")
+                        
+                        # Remove recovered symbols from failed list
+                        failed_symbols = [s for s in failed_symbols if s not in recovered_symbols]
+                except Exception as e:
+                    logger.warning(f"yfinance fallback failed: {e}")
 
         if failed_symbols:
             logger.warning(f"Failed to fetch data for: {failed_symbols}")
