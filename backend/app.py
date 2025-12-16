@@ -31,11 +31,34 @@ def log_request_info():
     if request.endpoint != 'health_check':
         logger.debug(f"Request: {request.method} {request.path}")
 
+@app.errorhandler(404)
+def handle_404(e):
+    """Handle 404 errors"""
+    # Don't log 404s as errors, they're expected for unknown routes
+    if request.path.startswith('/api/'):
+        return jsonify({'error': 'Endpoint non trouvé'}), 404
+    # For non-API routes, return a simple message
+    return jsonify({'error': 'Route non trouvée'}), 404
+
 @app.errorhandler(Exception)
 def handle_exception(e):
     """Global error handler"""
+    # Don't handle 404s here, they're handled above
+    from werkzeug.exceptions import NotFound
+    if isinstance(e, NotFound):
+        raise  # Let the 404 handler deal with it
+    
     logger.error(f"Unhandled exception: {str(e)}", exc_info=True)
     return jsonify({'error': 'Une erreur interne est survenue'}), 500
+
+@app.route('/', methods=['GET', 'HEAD'])
+def root():
+    """Root endpoint for health checks"""
+    return jsonify({
+        'status': 'ok',
+        'service': 'Cross-Asset Correlation Matrix API',
+        'version': '1.0.0'
+    }), 200
 
 @app.route('/api/health', methods=['GET'])
 def health_check():
