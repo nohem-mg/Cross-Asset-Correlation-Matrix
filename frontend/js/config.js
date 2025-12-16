@@ -10,7 +10,7 @@
     // - Leave undefined to use same-origin /api (for reverse proxy setups)
 
     // Uncomment and modify the line below for production:
-    // window.API_BASE_URL = 'https://your-backend-url.com/api';
+    window.API_BASE_URL = 'https://cross-asset-correlation-matrix.onrender.com/api';
 
     // For local development, this is not needed (defaults to localhost:5000)
 })();
