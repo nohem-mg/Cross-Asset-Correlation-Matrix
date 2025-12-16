@@ -1,0 +1,11 @@
+backend/
+venv/
+data/
+*.py
+*.pyc
+__pycache__/
+.env
+.git/
+DEPLOYMENT.md
+readme.md
+
